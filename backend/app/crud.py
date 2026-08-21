@@ -172,8 +172,16 @@ def list_rows(
     for key, value in (filters or {}).items():
         if value is None or key not in ALLOWED_COLUMNS[table]:
             continue
-        where.append(f"{key} = %s")
-        params.append(value)
+        if isinstance(value, (list, tuple, set)):
+            values = list(value)
+            if not values:
+                where.append("1 = 0")
+                continue
+            where.append(f"{key} = ANY(%s)")
+            params.append(values)
+        else:
+            where.append(f"{key} = %s")
+            params.append(value)
 
     if q and q.strip():
         like_cols = SEARCH_COLUMNS.get(table, ())

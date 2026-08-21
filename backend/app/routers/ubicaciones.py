@@ -1,15 +1,20 @@
 from fastapi import APIRouter, Query
 
-from ..crud import list_rows
+from ..crud import get_row, list_rows
 from ..db import get_conn
 
 router = APIRouter(prefix="/api/v1", tags=["ubicaciones"])
 
 
 @router.get("/arbol/ubicaciones")
-def arbol_ubicaciones(activo: bool | None = Query(True)):
-    """Empresa → fundo → módulo → turno (sin lotes; hay cientos)."""
-    filters = {"activo": activo} if activo is not None else {}
+def arbol_ubicaciones(activo: bool | None = Query(True), incluir_inactivos: bool = Query(False)):
+    """Empresa → fundo → módulo → turno (sin lotes; hay cientos).
+
+    `incluir_inactivos=true` trae todo en 1 sola llamada (evita que el
+    cliente pida activo=true y luego activo=false por separado).
+    """
+    activo_filter = None if incluir_inactivos else activo
+    filters = {"activo": activo_filter} if activo_filter is not None else {}
     with get_conn(write=False) as conn:
         cur = conn.cursor()
         empresas, _ = list_rows(cur, "empresa", filters=filters, skip=0, limit=500, order="razon_social")
@@ -54,3 +59,90 @@ def arbol_ubicaciones(activo: bool | None = Query(True)):
         }
         for e in empresas
     ]
+
+
+@router.get("/fundos/{fundo_id}/detalle")
+def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
+    """Módulos + turnos + lotes + grupos de un fundo en **una sola llamada** HTTP.
+
+    Reemplaza el patrón N+1 (1 request por módulo, 1 por turno) que antes
+    hacía el front al abrir el detalle de un fundo.
+    """
+    activo_filter = None if incluir_inactivos else True
+    with get_conn(write=False) as conn:
+        cur = conn.cursor()
+        fundo = get_row(cur, "fundo", "id", fundo_id)
+        empresa = get_row(cur, "empresa", "id", fundo["empresa_id"])
+
+        modulos, _ = list_rows(
+            cur,
+            "modulo",
+            filters={"fundo_id": fundo_id, "activo": activo_filter},
+            skip=0,
+            limit=500,
+            order="codigo",
+        )
+        modulo_ids = [m["id"] for m in modulos]
+
+        turnos, _ = list_rows(
+            cur,
+            "turno",
+            filters={"modulo_id": modulo_ids, "activo": activo_filter},
+            skip=0,
+            limit=500,
+            order="codigo",
+        )
+        turno_ids = [t["id"] for t in turnos]
+
+        lotes, _ = list_rows(
+            cur,
+            "lote",
+            filters={"turno_id": turno_ids, "activo": activo_filter},
+            skip=0,
+            limit=500,
+            order="codigo",
+        )
+
+        grupos, _ = list_rows(
+            cur,
+            "grupo",
+            filters={"fundo_id": fundo_id, "activo": activo_filter},
+            skip=0,
+            limit=500,
+            order="nombre",
+        )
+
+    return {
+        "fundo": fundo,
+        "empresa": empresa,
+        "modulos": modulos,
+        "turnos": turnos,
+        "lotes": lotes,
+        "grupos": grupos,
+    }
+
+
+@router.get("/dashboard/resumen")
+def dashboard_resumen():
+    """KPIs + muestra para Inicio en **una sola llamada** HTTP."""
+    with get_conn(write=False) as conn:
+        cur = conn.cursor()
+        _, empresas_total = list_rows(cur, "empresa", filters={"activo": True}, skip=0, limit=1, order="id")
+        _, fundos_total = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=1, order="id")
+        _, turnos_total = list_rows(cur, "turno", filters={"activo": True}, skip=0, limit=1, order="id")
+        _, vehiculos_total = list_rows(cur, "vehiculo", filters={"activo": True}, skip=0, limit=1, order="id")
+        empresas_muestra, _ = list_rows(
+            cur, "empresa", filters={"activo": True}, skip=0, limit=3, order="razon_social"
+        )
+        vehiculos_muestra, _ = list_rows(
+            cur, "vehiculo", filters={"activo": True}, skip=0, limit=3, order="placa"
+        )
+
+    return {
+        "empresas": empresas_total,
+        "fundos": fundos_total,
+        "turnos": turnos_total,
+        "vehiculos": vehiculos_total,
+        "empresas_muestra": empresas_muestra,
+        "vehiculos_muestra": vehiculos_muestra,
+    }

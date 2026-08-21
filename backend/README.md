@@ -6,18 +6,18 @@ Backend compartido para **móvil** y **web**. Las apps llaman con header `X-API-
 
 | Quién | Cómo |
 |-------|------|
-| App móvil / web | Cada request lleva `X-API-Key` con el valor de `API_KEY` (variable de entorno del backend). |
-| Operador en campo | Usa la app; **no** llama a Railway a mano. |
-| Railway healthcheck | Solo `GET /api/health` (sin clave). |
+| App móvil / web | Cada request lleva `X-API-Key` con el valor de `API_KEY`. |
+| Operador en campo | Usa la app; no llama a Render a mano. |
+| Healthcheck Render | Solo `GET /api/health` (sin clave). |
 
 ```http
-GET https://TU-SERVICIO.up.railway.app/api/v1/empresas
-X-API-Key: <mismo API_KEY que en Railway Variables>
+GET https://TU-SERVICIO.onrender.com/api/v1/empresas
+X-API-Key: <mismo API_KEY que en Environment de Render>
 ```
 
-Sin esa cabecera → `401`. Entrega al desarrollador móvil: **URL pública + API_KEY** (por canal seguro, no en el chat).
+Sin esa cabecera → `401`. Al móvil: **URL pública + API_KEY** (canal seguro).
 
-Más adelante: login con `usuario` + JWT; el `API_KEY` puede quedar solo para servicios internos.
+Más adelante: login con `usuario` + JWT.
 
 ## Arranque local
 
@@ -34,30 +34,30 @@ uvicorn app.main:app --reload --app-dir backend --host 127.0.0.1 --port 8001
 - Salud: `GET /api/health`
 - Listo (con key): `GET /api/ready`
 
-## Deploy en Railway
+## Deploy en Render
 
-1. Sube el repo a GitHub/GitLab (**nunca** subas `.env`).
-2. New Project → Deploy from repo.
-3. **Root Directory** = `backend` (ahí está `requirements.txt` y `railway.toml`).
-4. Variables (Settings → Variables):
+1. Sube el repo a GitHub (**nunca** subas `.env`).
+2. [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint** (usa `render.yaml` en la raíz)  
+   o **Web Service** manual:
+   - Root Directory: `backend`
+   - Runtime: Python
+   - Build: `pip install -r requirements.txt`
+   - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - Health Check Path: `/api/health`
+3. Environment:
 
 | Variable | Valor |
 |----------|--------|
-| `DATABASE_URL` | Connection string Neon (`sslmode=require`) |
-| `API_KEY` | Clave larga aleatoria (la misma que das al móvil) |
+| `DATABASE_URL` | Neon (`sslmode=require`) |
+| `API_KEY` | Clave larga (o la que Render genere si usas Blueprint) |
 | `APP_ENV` | `production` |
-| `TRUSTED_HOSTS` | `*.up.railway.app` (o `*` si usas dominio custom) |
-| `CORS_ORIGINS` | URLs del front web (coma-separadas, con `https://`) |
+| `TRUSTED_HOSTS` | `*.onrender.com` |
+| `CORS_ORIGINS` | URLs del front web (`https://...`) |
 | `RATE_LIMIT_PER_MINUTE` | `120` (opcional) |
 
-`PORT` lo pone Railway solo. Start command (ya en `railway.toml`):
+`PORT` lo asigna Render. En plan free el servicio **se duerme** tras inactividad; el primer request puede tardar ~30–60 s.
 
-```text
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
-
-5. Healthcheck: `/api/health`.
-6. Prueba: `GET https://.../api/health` → `{"ok":true}` y luego un catálogo con `X-API-Key`.
+4. Prueba: `GET https://....onrender.com/api/health` → `{"ok":true}`, luego un catálogo con `X-API-Key`.
 
 ## Convenio `/api/v1`
 

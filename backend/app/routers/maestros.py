@@ -7,12 +7,22 @@ from ..crud import get_row, insert_row, list_rows, soft_delete, update_row
 from ..db import get_conn
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
+ActivoQ = Annotated[bool | None, Query()]
+IncluirInactivosQ = Annotated[
+    bool,
+    Query(description="Si es true, ignora `activo` y trae activos e inactivos en una sola respuesta"),
+]
 
 router = APIRouter(prefix="/api/v1", tags=["maestros"])
 
 
 def _page(rows, total, skip, limit):
     return {"items": rows, "total": total, "skip": skip, "limit": limit}
+
+
+def _resolve_activo(activo: bool | None, incluir_inactivos: bool) -> bool | None:
+    """Evita que el cliente tenga que hacer 2 llamadas (activo=true + activo=false)."""
+    return None if incluir_inactivos else activo
 
 
 def _list(table: str, *, order: str, skip: int, limit: int, q: str | None, filters: dict):
@@ -72,8 +82,10 @@ def list_cargos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list("cargo", order="nombre", skip=skip, limit=limit, q=q, filters={"activo": activo})
 
 
@@ -102,8 +114,10 @@ def list_roles(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list("rol", order="nombre", skip=skip, limit=limit, q=q, filters={"activo": activo})
 
 
@@ -132,8 +146,10 @@ def list_proveedores(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list("proveedor", order="nombre", skip=skip, limit=limit, q=q, filters={"activo": activo})
 
 
@@ -162,8 +178,10 @@ def list_choferes(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list("chofer", order="nombre", skip=skip, limit=limit, q=q, filters={"activo": activo})
 
 
@@ -192,8 +210,10 @@ def list_empresas(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list("empresa", order="razon_social", skip=skip, limit=limit, q=q, filters={"activo": activo})
 
 
@@ -222,9 +242,11 @@ def list_fundos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     empresa_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "fundo",
         order="nombre",
@@ -260,9 +282,11 @@ def list_modulos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     fundo_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "modulo",
         order="codigo",
@@ -298,9 +322,11 @@ def list_turnos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     modulo_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "turno",
         order="codigo",
@@ -336,9 +362,11 @@ def list_lotes(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     turno_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "lote",
         order="codigo",
@@ -374,10 +402,12 @@ def list_grupos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     empresa_id: int | None = None,
     fundo_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "grupo",
         order="nombre",
@@ -413,18 +443,27 @@ def list_usuarios(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     grupo_id: int | None = None,
     cargo_id: int | None = None,
     rol_id: int | None = None,
+    dni: Annotated[str | None, Query(max_length=15)] = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "usuario",
         order="nombre",
         skip=skip,
         limit=limit,
         q=q,
-        filters={"activo": activo, "grupo_id": grupo_id, "cargo_id": cargo_id, "rol_id": rol_id},
+        filters={
+            "activo": activo,
+            "grupo_id": grupo_id,
+            "cargo_id": cargo_id,
+            "rol_id": rol_id,
+            "dni": dni,
+        },
     )
 
 
@@ -453,10 +492,12 @@ def list_vehiculos(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     q: SearchQ = None,
-    activo: bool | None = True,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
     proveedor_id: int | None = None,
     chofer_id: int | None = None,
 ):
+    activo = _resolve_activo(activo, incluir_inactivos)
     return _list(
         "vehiculo",
         order="placa",

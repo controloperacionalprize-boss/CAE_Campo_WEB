@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+
+  --color-olive-950: #1f2a1c;
+  --color-olive-900: #2d3b29;
+  --color-olive-800: #3d4f3a;
+  --color-olive-700: #4f644a;
+  --color-olive-600: #657a5e;
+  --color-olive-500: #7d9374;
+  --color-olive-400: #9aaf90;
+  --color-olive-300: #b8c9af;
+  --color-olive-200: #d4e0cd;
+  --color-olive-100: #e8efe4;
+  --color-olive-50: #f3f7f1;
+
+  --color-sage-100: #e4ebe0;
+  --color-sage-50: #f0f4ed;
+
+  --color-teal-900: #0a454a;
+  --color-teal-800: #0d5c63;
+  --color-teal-700: #117079;
+  --color-teal-600: #158a94;
+
+  --color-sand-100: #f0ebe3;
+  --color-sand-50: #f7f4ef;
+  --color-sand-0: #fbfaf7;
+
+  --color-ink: #1c2419;
+  --color-muted: #5c6758;
+  --color-line: #d9e0d4;
+  --color-danger: #a63d3d;
+  --color-danger-soft: #f8e8e8;
+  --color-success: #3d6b45;
+  --color-success-soft: #e6f0e8;
+  --color-warn: #8a6a2f;
+  --color-warn-soft: #f5efdf;
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-sand-50 font-sans text-ink;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  ::selection {
+    @apply bg-olive-200 text-olive-950;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+}
