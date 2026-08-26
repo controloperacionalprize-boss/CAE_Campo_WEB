@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link2, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { Select, Switch } from '../ui/Form'
+import { Input, Select, Switch } from '../ui/Form'
 import {
   EmptyState,
   ErrorBanner,
@@ -10,7 +10,8 @@ import {
   SkeletonRows,
   StatusPill,
 } from '../ui/Feedback'
-import { Modal } from '../ui/Overlay'
+import { Drawer } from '../ui/Overlay'
+import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
 import { apiPatch, apiPost, listPage } from '../../lib/api'
 import { useToast } from '../../context/ToastContext'
@@ -131,14 +132,7 @@ export function VehiculosPanel() {
                       <StatusPill activo={v.activo} />
                     </Td>
                     <Td className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        leftIcon={<Link2 className="size-3.5" />}
-                        onClick={() => setEditing(v)}
-                      >
-                        Editar
-                      </Button>
+                      <EditButton onClick={() => setEditing(v)} />
                     </Td>
                   </Tr>
                 ))}
@@ -149,7 +143,7 @@ export function VehiculosPanel() {
         </>
       )}
 
-      <VehiculoFormModal
+      <VehiculoFormDrawer
         open={creating}
         onClose={() => setCreating(false)}
         vehiculo={null}
@@ -161,7 +155,7 @@ export function VehiculosPanel() {
         }}
       />
 
-      <VehiculoFormModal
+      <VehiculoFormDrawer
         open={!!editing}
         onClose={() => setEditing(null)}
         vehiculo={editing}
@@ -176,7 +170,7 @@ export function VehiculosPanel() {
   )
 }
 
-function VehiculoFormModal({
+function VehiculoFormDrawer({
   open,
   onClose,
   vehiculo,
@@ -204,7 +198,9 @@ function VehiculoFormModal({
     if (!open) return
     setPlaca(vehiculo?.placa ?? '')
     setChoferId(vehiculo?.chofer_id != null ? String(vehiculo.chofer_id) : '')
-    setProveedorId(vehiculo ? String(vehiculo.proveedor_id) : proveedores[0] ? String(proveedores[0].id) : '')
+    setProveedorId(
+      vehiculo ? String(vehiculo.proveedor_id) : proveedores[0] ? String(proveedores[0].id) : '',
+    )
     setActivo(vehiculo?.activo ?? true)
     setError('')
   }, [open, vehiculo, proveedores])
@@ -245,19 +241,16 @@ function VehiculoFormModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isCreate ? 'Nuevo vehículo' : `Editar ${vehiculo?.placa}`}>
+    <Drawer open={open} onClose={onClose} title={isCreate ? 'Nuevo vehículo' : `Editar ${vehiculo?.placa}`}>
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="mb-1.5 block text-xs font-medium tracking-wide text-muted">Placa</label>
-          <input
-            className="w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/15"
-            value={placa}
-            onChange={(e) => setPlaca(e.target.value.toUpperCase())}
-            placeholder="ABC-123"
-            maxLength={15}
-          />
-          {error && <p className="mt-1 text-xs text-danger">{error}</p>}
-        </div>
+        <Input
+          label="Placa"
+          value={placa}
+          onChange={(e) => setPlaca(e.target.value.toUpperCase())}
+          error={error}
+          placeholder="ABC-123"
+          maxLength={15}
+        />
         <Select
           label="Proveedor"
           value={proveedorId}
@@ -281,6 +274,6 @@ function VehiculoFormModal({
           </Button>
         </div>
       </form>
-    </Modal>
+    </Drawer>
   )
 }

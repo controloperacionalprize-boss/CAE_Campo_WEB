@@ -15,7 +15,7 @@ import { cn } from '../../lib/utils'
 
 const nav = [
   { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
-  { to: '/ubicaciones', label: 'Ubicaciones', icon: MapPinned },
+  { to: '/ubicaciones', label: 'Fundos', icon: MapPinned },
   { to: '/personas', label: 'Personas', icon: Users },
   { to: '/flota', label: 'Flota', icon: Truck },
   { to: '/despacho', label: 'Despacho', icon: ClipboardList },
@@ -27,7 +27,7 @@ function BrandMark({ compact }: { compact?: boolean }) {
       <div className="flex size-9 items-center justify-center rounded-lg bg-olive-800 text-olive-100">
         <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden>
           <path d="M5 17c2.5-5 5-7.5 7-8.5 2 .8 4.5 3.5 7 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          <circle cx="12" cy="9" r="1.6" fill="#7dd3c7" />
+          <circle cx="12" cy="9" r="1.6" className="fill-teal-600" />
         </svg>
       </div>
       {!compact && (
@@ -79,7 +79,7 @@ export function AppShell() {
         className="pointer-events-none fixed inset-0 -z-10 bg-sand-50"
         style={{
           backgroundImage:
-            'radial-gradient(ellipse 80% 50% at 100% -10%, rgba(184,201,175,0.35), transparent), radial-gradient(ellipse 60% 40% at 0% 100%, rgba(13,92,99,0.06), transparent)',
+            'radial-gradient(ellipse 80% 50% at 100% -10%, rgba(0,102,204,0.08), transparent), radial-gradient(ellipse 60% 40% at 0% 100%, rgba(27,58,107,0.06), transparent)',
         }}
       />
 

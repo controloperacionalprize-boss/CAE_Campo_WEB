@@ -74,7 +74,7 @@ export function LoginPage() {
         aria-hidden
         className="absolute inset-0 -z-10"
         style={{
-          background: 'linear-gradient(160deg, #f7f4ef 0%, #e8efe4 45%, #d4e0cd 100%)',
+          background: 'linear-gradient(160deg, #f5f5f5 0%, #ffffff 45%, #f0f0f0 100%)',
         }}
       />
       <div
@@ -82,7 +82,7 @@ export function LoginPage() {
         className="absolute inset-x-0 top-0 -z-10 h-[42vh]"
         style={{
           background:
-            'radial-gradient(ellipse 70% 80% at 50% 0%, rgba(61,79,58,0.12), transparent)',
+            'radial-gradient(ellipse 70% 80% at 50% 0%, rgba(27,58,107,0.1), transparent)',
         }}
       />
 
@@ -96,7 +96,7 @@ export function LoginPage() {
                 strokeWidth="1.8"
                 strokeLinecap="round"
               />
-              <circle cx="12" cy="9" r="1.6" fill="#7dd3c7" />
+              <circle cx="12" cy="9" r="1.6" className="fill-teal-600" />
             </svg>
           </div>
           <p className="text-xs font-medium tracking-[0.18em] text-teal-800 uppercase">Aquanqa</p>

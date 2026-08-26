@@ -37,20 +37,54 @@ function buildUrl(path: string, params?: Record<string, ParamValue>) {
   return url
 }
 
+function messageFromDetail(detail: unknown, status: number): string {
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        if (typeof d === 'string') return d
+        if (d && typeof d === 'object') {
+          const o = d as { mensaje?: unknown; msg?: unknown; message?: unknown }
+          const v = o.mensaje ?? o.msg ?? o.message
+          return typeof v === 'string' ? v : undefined
+        }
+        return undefined
+      })
+      .filter((x): x is string => typeof x === 'string' && x.length > 0)
+    if (parts.length) return parts.join(' ')
+  }
+  if (detail && typeof detail === 'object') {
+    const obj = detail as { msg?: unknown; message?: unknown; detail?: unknown }
+    const nested = obj.message ?? obj.msg ?? obj.detail
+    if (typeof nested === 'string' && nested.trim()) return nested
+  }
+  if (status === 401) return 'No autorizado. Revise la clave de acceso'
+  if (status === 404) return 'No se encontró el recurso solicitado'
+  if (status === 409) return 'Conflicto con un registro existente'
+  if (status === 422) return 'Hay datos inválidos en la solicitud'
+  if (status === 429) return 'Demasiadas solicitudes. Espere un momento'
+  if (status >= 500) return 'Error interno del servidor. Intente más tarde'
+  return `Error ${status}`
+}
+
 async function parseError(res: Response): Promise<never> {
-  let detail: unknown = res.statusText
+  let body: Record<string, unknown> | null = null
   try {
-    const body = await res.json()
-    detail = body.detail ?? body
+    body = (await res.json()) as Record<string, unknown>
   } catch {
     /* ignore */
   }
+  const detail = body?.detail ?? body
+  const fromErrors = Array.isArray(body?.errors)
+    ? (body.errors as Array<{ mensaje?: string }>)
+        .map((e) => e.mensaje)
+        .filter((x): x is string => Boolean(x))
+        .join(' ')
+    : ''
   const msg =
-    typeof detail === 'string'
-      ? detail
-      : Array.isArray(detail)
-        ? detail.map((d) => d.msg ?? JSON.stringify(d)).join('; ')
-        : `Error ${res.status}`
+    (typeof detail === 'string' && detail.trim() && detail) ||
+    fromErrors ||
+    messageFromDetail(detail, res.status)
   throw new ApiError(res.status, detail, msg)
 }
 

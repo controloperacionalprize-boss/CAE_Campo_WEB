@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 
 export function TableShell({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white">
+    <div className="overflow-hidden rounded-xl border border-line bg-sand-0 shadow-[0_1px_0_rgba(26,26,26,0.04)]">
       <div className="overflow-x-auto">{children}</div>
     </div>
   )

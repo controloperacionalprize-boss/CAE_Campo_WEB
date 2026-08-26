@@ -11,6 +11,7 @@ import {
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
+import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
 import { apiPatch, apiPost, listPage } from '../../lib/api'
 import { isValidDni } from '../../lib/utils'
@@ -186,16 +187,12 @@ export function UsuariosPanel() {
                       <StatusPill activo={u.activo} />
                     </Td>
                     <Td className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <EditButton
                         onClick={() => {
                           setEditing(u)
                           setDrawerOpen(true)
                         }}
-                      >
-                        Editar
-                      </Button>
+                      />
                     </Td>
                   </Tr>
                 ))}

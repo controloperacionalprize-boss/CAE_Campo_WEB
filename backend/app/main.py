@@ -5,12 +5,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .auth import require_api_key
 from .config import get_settings
 from .db import close_pool, get_conn
+from .errors import format_validation, json_error, normalize_http_detail
 from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 from .routers.maestros import router as maestros_router
 from .routers.ubicaciones import router as ubicaciones_router
@@ -28,11 +28,31 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="Despacho Campo API",
     version="0.1.0",
-    description="API compartida para app móvil y web. Requiere header X-API-Key.",
+    description=(
+        "API compartida para app móvil y web. Requiere header X-API-Key. "
+        "Los errores responden `{ \"detail\": \"texto en español\" }`; "
+        "en validación (422) se agrega `errors` con campo y mensaje."
+    ),
     lifespan=lifespan,
     docs_url="/docs" if not settings.is_production else None,
     redoc_url="/redoc" if not settings.is_production else None,
     openapi_url="/openapi.json" if not settings.is_production else None,
+    responses={
+        401: {"description": "Sin API key o clave inválida", "content": {"application/json": {"example": {"detail": "API key inválida o ausente. Envíe el header X-API-Key"}}}},
+        404: {"description": "Recurso no encontrado", "content": {"application/json": {"example": {"detail": "No se encontró el fundo"}}}},
+        409: {"description": "Dato duplicado o referencia inválida", "content": {"application/json": {"example": {"detail": "Ya existe un registro con ese DNI"}}}},
+        422: {
+            "description": "Datos inválidos",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "El campo nombre es obligatorio.",
+                        "errors": [{"campo": "nombre", "mensaje": "El campo nombre es obligatorio."}],
+                    }
+                }
+            },
+        },
+    },
 )
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, max_per_minute=settings.rate_limit_per_minute)
@@ -50,18 +70,15 @@ app.include_router(ubicaciones_router, dependencies=[Depends(require_api_key)])
 
 @app.exception_handler(RequestValidationError)
 async def validation_handler(_request: Request, exc: RequestValidationError):
-    detail = [
-        {"loc": list(err.get("loc", [])), "msg": err.get("msg"), "type": err.get("type")}
-        for err in exc.errors()
-    ]
-    return JSONResponse(status_code=422, content={"detail": detail})
+    detail, errors = format_validation(exc.errors())
+    return json_error(422, detail, errors=errors)
 
 
 @app.exception_handler(StarletteHTTPException)
 async def http_handler(_request: Request, exc: StarletteHTTPException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail},
+    return json_error(
+        exc.status_code,
+        normalize_http_detail(exc.status_code, exc.detail),
         headers=getattr(exc, "headers", None) or {},
     )
 
@@ -69,7 +86,7 @@ async def http_handler(_request: Request, exc: StarletteHTTPException):
 @app.exception_handler(Exception)
 async def unhandled_handler(_request: Request, exc: Exception):
     logger.exception("Error no controlado")
-    return JSONResponse(status_code=500, content={"detail": "Error interno"})
+    return json_error(500, "Error interno del servidor. Intente más tarde")
 
 
 @app.get("/api/health")
@@ -85,4 +102,7 @@ def ready(_: None = Depends(require_api_key)):
         return {"ok": True, "db": "ok"}
     except Exception:
         logger.exception("Fallo de conectividad")
-        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+        raise HTTPException(
+            status_code=503,
+            detail="La base de datos no está disponible. Intente más tarde",
+        )

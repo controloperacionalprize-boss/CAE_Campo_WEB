@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Plus, Eye, Pencil } from 'lucide-react'
+import { ChevronRight, Plus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input, Select, Switch } from '../components/ui/Form'
 import {
@@ -11,12 +11,22 @@ import {
   SkeletonRows,
   StatusPill,
 } from '../components/ui/Feedback'
-import { Modal } from '../components/ui/Overlay'
+import { EditButton, ViewButton } from '../components/ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../components/ui/Table'
-import { apiGet, apiPatch, apiPost } from '../lib/api'
+import {
+  FundoFormDrawer,
+  LoteFormDrawer,
+  ModuloFormDrawer,
+  TurnoFormDrawer,
+  type FundoForm,
+  type LoteForm,
+  type ModuloForm,
+  type TurnoForm,
+} from '../components/ubicaciones/UbicacionForms'
+import { apiGet } from '../lib/api'
 import { paginate } from '../lib/utils'
 import { useToast } from '../context/ToastContext'
-import type { EmpresaNodo, FundoNodo, ModuloNodo } from '../types/api'
+import type { EmpresaNodo, FundoNodo, ModuloNodo, TurnoNodo } from '../types/api'
 
 type Row =
   | { kind: 'fundo'; empresaId: number; empresaNombre: string; data: FundoNodo }
@@ -27,15 +37,15 @@ type Row =
       fundoNombre: string
       data: ModuloNodo
     }
-
-type FundoForm = { id?: number; empresaId: number; nombre: string; domicilio: string; activo: boolean }
-type ModuloForm = {
-  id?: number
-  fundoId: number
-  codigo: string
-  nombre: string
-  activo: boolean
-}
+  | {
+      kind: 'turno'
+      moduloId: number
+      fundoId: number
+      empresaNombre: string
+      fundoNombre: string
+      moduloCodigo: string
+      data: TurnoNodo
+    }
 
 export function UbicacionesPage() {
   const toast = useToast()
@@ -50,7 +60,9 @@ export function UbicacionesPage() {
   const [error, setError] = useState<string | null>(null)
   const [fundoForm, setFundoForm] = useState<FundoForm | null>(null)
   const [moduloForm, setModuloForm] = useState<ModuloForm | null>(null)
-  const limit = 8
+  const [turnoForm, setTurnoForm] = useState<TurnoForm | null>(null)
+  const [loteForm, setLoteForm] = useState<LoteForm | null>(null)
+  const limit = 10
 
   async function load() {
     setLoading(true)
@@ -62,7 +74,7 @@ export function UbicacionesPage() {
         }),
       )
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudieron cargar las ubicaciones')
+      setError(e instanceof Error ? e.message : 'No se pudieron cargar los fundos')
       setArbol([])
     } finally {
       setLoading(false)
@@ -91,6 +103,38 @@ export function UbicacionesPage() {
     [arbol],
   )
 
+  const allModulosFlat = useMemo(
+    () =>
+      arbol.flatMap((e) =>
+        e.fundos.flatMap((f) =>
+          f.modulos.map((m) => ({
+            id: m.id,
+            codigo: m.codigo,
+            nombre: m.nombre,
+            fundoNombre: f.nombre,
+          })),
+        ),
+      ),
+    [arbol],
+  )
+
+  const allTurnosFlat = useMemo(
+    () =>
+      arbol.flatMap((e) =>
+        e.fundos.flatMap((f) =>
+          f.modulos.flatMap((m) =>
+            m.turnos.map((t) => ({
+              id: t.id,
+              codigo: t.codigo,
+              nombre: t.nombre,
+              moduloCodigo: m.codigo,
+            })),
+          ),
+        ),
+      ),
+    [arbol],
+  )
+
   const rows = useMemo(() => {
     const qn = q.trim().toLowerCase()
     const list: Row[] = []
@@ -103,32 +147,53 @@ export function UbicacionesPage() {
           f.nombre.toLowerCase().includes(qn) ||
           e.razon_social.toLowerCase().includes(qn) ||
           e.ruc.includes(qn)
-        const mods = f.modulos.filter((m) => {
+
+        const matchingMods = f.modulos.filter((m) => {
           if (!qn) return true
-          return (
-            (m.nombre ?? '').toLowerCase().includes(qn) ||
-            m.codigo.toLowerCase().includes(qn)
+          const modHit =
+            (m.nombre ?? '').toLowerCase().includes(qn) || m.codigo.toLowerCase().includes(qn)
+          const turnoHit = m.turnos.some(
+            (t) =>
+              t.codigo.toLowerCase().includes(qn) || (t.nombre ?? '').toLowerCase().includes(qn),
           )
+          return modHit || turnoHit
         })
+
         if (fundoMatch) {
           list.push({ kind: 'fundo', empresaId: e.id, empresaNombre: e.razon_social, data: f })
-          for (const m of mods) {
+        }
+
+        const modsToShow = fundoMatch ? f.modulos : matchingMods
+        for (const m of modsToShow) {
+          const modHit =
+            !qn ||
+            (m.nombre ?? '').toLowerCase().includes(qn) ||
+            m.codigo.toLowerCase().includes(qn)
+          list.push({
+            kind: 'modulo',
+            fundoId: f.id,
+            empresaNombre: e.razon_social,
+            fundoNombre: f.nombre,
+            data: m,
+          })
+          const turnosToShow = fundoMatch
+            ? m.turnos
+            : m.turnos.filter(
+                (t) =>
+                  !qn ||
+                  t.codigo.toLowerCase().includes(qn) ||
+                  (t.nombre ?? '').toLowerCase().includes(qn) ||
+                  modHit,
+              )
+          for (const t of turnosToShow) {
             list.push({
-              kind: 'modulo',
+              kind: 'turno',
+              moduloId: m.id,
               fundoId: f.id,
               empresaNombre: e.razon_social,
               fundoNombre: f.nombre,
-              data: m,
-            })
-          }
-        } else {
-          for (const m of mods) {
-            list.push({
-              kind: 'modulo',
-              fundoId: f.id,
-              empresaNombre: e.razon_social,
-              fundoNombre: f.nombre,
-              data: m,
+              moduloCodigo: m.codigo,
+              data: t,
             })
           }
         }
@@ -140,9 +205,7 @@ export function UbicacionesPage() {
   const page = paginate(rows, skip, limit)
 
   function openNuevoFundo() {
-    const defaultEmpresa = empresaId
-      ? Number(empresaId)
-      : arbol[0]?.id ?? 0
+    const defaultEmpresa = empresaId ? Number(empresaId) : arbol[0]?.id ?? 0
     if (!defaultEmpresa) {
       toast.error('No hay empresas disponibles')
       return
@@ -155,15 +218,53 @@ export function UbicacionesPage() {
     })
   }
 
+  function openNuevoModulo(preFundoId?: number) {
+    const id = preFundoId ?? (fundoId ? Number(fundoId) : allFundosFlat[0]?.id ?? 0)
+    if (!id) {
+      toast.error('Cree un fundo antes de agregar un módulo')
+      return
+    }
+    setModuloForm({ fundoId: id, codigo: '', nombre: '', activo: true })
+  }
+
+  function openNuevoTurno(preModuloId?: number) {
+    const id = preModuloId ?? allModulosFlat[0]?.id ?? 0
+    if (!id) {
+      toast.error('Cree un módulo antes de agregar un turno')
+      return
+    }
+    setTurnoForm({ moduloId: id, codigo: '', nombre: '', activo: true })
+  }
+
+  function openNuevoLote(preTurnoId?: number) {
+    const id = preTurnoId ?? allTurnosFlat[0]?.id ?? 0
+    if (!id) {
+      toast.error('Cree un turno antes de agregar un lote')
+      return
+    }
+    setLoteForm({ turnoId: id, codigo: '', areaHa: '', activo: true })
+  }
+
   return (
     <div>
       <PageHeader
-        title="Ubicaciones"
-        description="Empresa → Fundo → Módulo → Turno → Lotes"
+        title="Fundos"
+        description="Empresa → Fundo → Módulo → Turno → Lote (hectáreas)"
         actions={
-          <Button leftIcon={<Plus className="size-4" />} onClick={openNuevoFundo}>
-            Nuevo fundo
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button leftIcon={<Plus className="size-4" />} onClick={openNuevoFundo}>
+              Nuevo fundo
+            </Button>
+            <Button variant="secondary" leftIcon={<Plus className="size-4" />} onClick={() => openNuevoModulo()}>
+              Módulo
+            </Button>
+            <Button variant="secondary" leftIcon={<Plus className="size-4" />} onClick={() => openNuevoTurno()}>
+              Turno
+            </Button>
+            <Button variant="secondary" leftIcon={<Plus className="size-4" />} onClick={() => openNuevoLote()}>
+              Lote
+            </Button>
+          </div>
         }
       />
 
@@ -173,6 +274,10 @@ export function UbicacionesPage() {
         <span className="text-olive-900">Fundo</span>
         <ChevronRight className="size-3.5" />
         <span>Módulo</span>
+        <ChevronRight className="size-3.5" />
+        <span>Turno</span>
+        <ChevronRight className="size-3.5" />
+        <span>Lote</span>
       </nav>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
@@ -232,8 +337,13 @@ export function UbicacionesPage() {
             <SkeletonRows rows={6} />
           ) : page.total === 0 ? (
             <EmptyState
-              title="Sin ubicaciones"
-              description="No hay fundos o módulos con los filtros actuales."
+              title="Sin fundos"
+              description="No hay fundos, módulos o turnos con los filtros actuales."
+              action={
+                <Button leftIcon={<Plus className="size-4" />} onClick={openNuevoFundo}>
+                  Nuevo fundo
+                </Button>
+              }
             />
           ) : (
             <>
@@ -266,14 +376,9 @@ export function UbicacionesPage() {
                           <Td className="text-right">
                             <div className="inline-flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <Link to={`/ubicaciones/fundos/${row.data.id}`}>
-                                <Button variant="ghost" size="sm" leftIcon={<Eye className="size-3.5" />}>
-                                  Ver
-                                </Button>
+                                <ViewButton />
                               </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                leftIcon={<Pencil className="size-3.5" />}
+                              <EditButton
                                 onClick={() =>
                                   setFundoForm({
                                     id: row.data.id,
@@ -283,13 +388,11 @@ export function UbicacionesPage() {
                                     activo: row.data.activo,
                                   })
                                 }
-                              >
-                                Editar
-                              </Button>
+                              />
                             </div>
                           </Td>
                         </Tr>
-                      ) : (
+                      ) : row.kind === 'modulo' ? (
                         <Tr
                           key={`m-${row.data.id}`}
                           selected={selected?.kind === 'modulo' && selected.data.id === row.data.id}
@@ -309,23 +412,56 @@ export function UbicacionesPage() {
                             <StatusPill activo={row.data.activo} />
                           </Td>
                           <Td className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              leftIcon={<Pencil className="size-3.5" />}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setModuloForm({
-                                  id: row.data.id,
-                                  fundoId: row.fundoId,
-                                  codigo: row.data.codigo,
-                                  nombre: row.data.nombre ?? '',
-                                  activo: row.data.activo,
-                                })
-                              }}
-                            >
-                              Editar
-                            </Button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <EditButton
+                                onClick={() =>
+                                  setModuloForm({
+                                    id: row.data.id,
+                                    fundoId: row.fundoId,
+                                    codigo: row.data.codigo,
+                                    nombre: row.data.nombre ?? '',
+                                    activo: row.data.activo,
+                                  })
+                                }
+                              />
+                            </div>
+                          </Td>
+                        </Tr>
+                      ) : (
+                        <Tr
+                          key={`t-${row.data.id}`}
+                          selected={selected?.kind === 'turno' && selected.data.id === row.data.id}
+                          onClick={() => setSelected(row)}
+                        >
+                          <Td>
+                            <span className="pl-6 text-xs text-muted">Turno</span>
+                          </Td>
+                          <Td>
+                            <p className="font-medium">
+                              {row.data.codigo}
+                              {row.data.nombre ? ` · ${row.data.nombre}` : ''}
+                            </p>
+                            <p className="text-xs text-muted">
+                              {row.fundoNombre} · {row.moduloCodigo}
+                            </p>
+                          </Td>
+                          <Td>
+                            <StatusPill activo={row.data.activo} />
+                          </Td>
+                          <Td className="text-right">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <EditButton
+                                onClick={() =>
+                                  setTurnoForm({
+                                    id: row.data.id,
+                                    moduloId: row.moduloId,
+                                    codigo: row.data.codigo,
+                                    nombre: row.data.nombre ?? '',
+                                    activo: row.data.activo,
+                                  })
+                                }
+                              />
+                            </div>
                           </Td>
                         </Tr>
                       ),
@@ -359,16 +495,29 @@ export function UbicacionesPage() {
                   variant="secondary"
                   size="sm"
                   leftIcon={<Plus className="size-3.5" />}
-                  onClick={() =>
-                    setModuloForm({
-                      fundoId: selected.data.id,
-                      codigo: '',
-                      nombre: '',
-                      activo: true,
-                    })
-                  }
+                  onClick={() => openNuevoModulo(selected.data.id)}
                 >
                   Nuevo módulo
+                </Button>
+              </div>
+            </div>
+          ) : selected.kind === 'modulo' ? (
+            <div className="mt-3 space-y-2 text-sm">
+              <p className="font-display text-lg text-olive-950">
+                {selected.data.codigo}
+                {selected.data.nombre ? ` · ${selected.data.nombre}` : ''}
+              </p>
+              <p className="text-muted">{selected.fundoNombre}</p>
+              <p className="text-xs text-muted">{selected.data.turnos.length} turno(s)</p>
+              <StatusPill activo={selected.data.activo} />
+              <div className="pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Plus className="size-3.5" />}
+                  onClick={() => openNuevoTurno(selected.data.id)}
+                >
+                  Nuevo turno
                 </Button>
               </div>
             </div>
@@ -378,15 +527,26 @@ export function UbicacionesPage() {
                 {selected.data.codigo}
                 {selected.data.nombre ? ` · ${selected.data.nombre}` : ''}
               </p>
-              <p className="text-muted">{selected.fundoNombre}</p>
-              <p className="text-xs text-muted">{selected.data.turnos.length} turno(s)</p>
+              <p className="text-muted">
+                {selected.fundoNombre} · {selected.moduloCodigo}
+              </p>
               <StatusPill activo={selected.data.activo} />
+              <div className="pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Plus className="size-3.5" />}
+                  onClick={() => openNuevoLote(selected.data.id)}
+                >
+                  Nuevo lote
+                </Button>
+              </div>
             </div>
           )}
         </aside>
       </div>
 
-      <FundoFormModal
+      <FundoFormDrawer
         open={!!fundoForm}
         form={fundoForm}
         empresas={empresasOpts}
@@ -397,7 +557,7 @@ export function UbicacionesPage() {
         }}
       />
 
-      <ModuloFormModal
+      <ModuloFormDrawer
         open={!!moduloForm}
         form={moduloForm}
         fundos={allFundosFlat}
@@ -407,202 +567,28 @@ export function UbicacionesPage() {
           await load()
         }}
       />
+
+      <TurnoFormDrawer
+        open={!!turnoForm}
+        form={turnoForm}
+        modulos={allModulosFlat}
+        onClose={() => setTurnoForm(null)}
+        onSaved={async () => {
+          setTurnoForm(null)
+          await load()
+        }}
+      />
+
+      <LoteFormDrawer
+        open={!!loteForm}
+        form={loteForm}
+        turnos={allTurnosFlat}
+        onClose={() => setLoteForm(null)}
+        onSaved={async () => {
+          setLoteForm(null)
+          await load()
+        }}
+      />
     </div>
-  )
-}
-
-function FundoFormModal({
-  open,
-  form,
-  empresas,
-  onClose,
-  onSaved,
-}: {
-  open: boolean
-  form: FundoForm | null
-  empresas: { value: number; label: string }[]
-  onClose: () => void
-  onSaved: () => Promise<void>
-}) {
-  const toast = useToast()
-  const [empresaId, setEmpresaId] = useState('')
-  const [nombre, setNombre] = useState('')
-  const [domicilio, setDomicilio] = useState('')
-  const [activo, setActivo] = useState(true)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!form) return
-    setEmpresaId(String(form.empresaId))
-    setNombre(form.nombre)
-    setDomicilio(form.domicilio)
-    setActivo(form.activo)
-    setError('')
-  }, [form])
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!nombre.trim()) {
-      setError('Ingrese el nombre')
-      return
-    }
-    if (!empresaId) {
-      setError('Seleccione una empresa')
-      return
-    }
-    const body = {
-      empresa_id: Number(empresaId),
-      nombre: nombre.trim(),
-      domicilio: domicilio.trim() || null,
-      activo,
-    }
-    setSaving(true)
-    try {
-      if (form?.id) {
-        await apiPatch(`/api/v1/fundos/${form.id}`, body)
-        toast.success('Fundo actualizado')
-      } else {
-        await apiPost('/api/v1/fundos', body)
-        toast.success('Fundo creado')
-      }
-      await onSaved()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={form?.id ? 'Editar fundo' : 'Nuevo fundo'}>
-      <form onSubmit={submit} className="space-y-4">
-        <Select
-          label="Empresa"
-          value={empresaId}
-          onChange={(e) => setEmpresaId(e.target.value)}
-          options={empresas}
-        />
-        <Input
-          label="Nombre"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          error={error}
-        />
-        <Input
-          label="Domicilio"
-          value={domicilio}
-          onChange={(e) => setDomicilio(e.target.value)}
-        />
-        <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  )
-}
-
-function ModuloFormModal({
-  open,
-  form,
-  fundos,
-  onClose,
-  onSaved,
-}: {
-  open: boolean
-  form: ModuloForm | null
-  fundos: { id: number; nombre: string; empresaId: number }[]
-  onClose: () => void
-  onSaved: () => Promise<void>
-}) {
-  const toast = useToast()
-  const [fundoId, setFundoId] = useState('')
-  const [codigo, setCodigo] = useState('')
-  const [nombre, setNombre] = useState('')
-  const [activo, setActivo] = useState(true)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!form) return
-    setFundoId(String(form.fundoId))
-    setCodigo(form.codigo)
-    setNombre(form.nombre)
-    setActivo(form.activo)
-    setError('')
-  }, [form])
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!codigo.trim()) {
-      setError('Ingrese el código')
-      return
-    }
-    if (!fundoId) {
-      setError('Seleccione un fundo')
-      return
-    }
-    const body = {
-      fundo_id: Number(fundoId),
-      codigo: codigo.trim(),
-      nombre: nombre.trim() || null,
-      activo,
-    }
-    setSaving(true)
-    try {
-      if (form?.id) {
-        await apiPatch(`/api/v1/modulos/${form.id}`, body)
-        toast.success('Módulo actualizado')
-      } else {
-        await apiPost('/api/v1/modulos', body)
-        toast.success('Módulo creado')
-      }
-      await onSaved()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title={form?.id ? 'Editar módulo' : 'Nuevo módulo'}>
-      <form onSubmit={submit} className="space-y-4">
-        <Select
-          label="Fundo"
-          value={fundoId}
-          onChange={(e) => setFundoId(e.target.value)}
-          options={fundos.map((f) => ({ value: f.id, label: f.nombre }))}
-        />
-        <Input
-          label="Código"
-          value={codigo}
-          onChange={(e) => setCodigo(e.target.value)}
-          error={error}
-          placeholder="M-01"
-        />
-        <Input
-          label="Nombre"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          placeholder="Opcional"
-        />
-        <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
-      </form>
-    </Modal>
   )
 }

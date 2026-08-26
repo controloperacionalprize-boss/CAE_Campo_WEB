@@ -4,6 +4,8 @@ from fastapi import HTTPException
 from psycopg2 import IntegrityError, errorcodes
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 
+from .errors import fk_message, integrity_message, not_found, unique_message
+
 ALLOWED_TABLES = {
     "actividad_economica",
     "cargo",
@@ -144,12 +146,15 @@ def _escape_like(value: str) -> str:
 def _raise_db(exc: Exception) -> None:
     code = getattr(exc, "pgcode", None)
     if isinstance(exc, UniqueViolation) or code == errorcodes.UNIQUE_VIOLATION:
-        raise HTTPException(status_code=409, detail="Ya existe un registro con esos datos únicos") from None
+        raise HTTPException(status_code=409, detail=unique_message(exc)) from None
     if isinstance(exc, ForeignKeyViolation) or code == errorcodes.FOREIGN_KEY_VIOLATION:
-        raise HTTPException(status_code=409, detail="Referencia inválida o el registro está en uso") from None
+        raise HTTPException(status_code=409, detail=fk_message(exc)) from None
     if isinstance(exc, IntegrityError):
-        raise HTTPException(status_code=409, detail="No se pudo guardar el registro") from None
-    raise HTTPException(status_code=500, detail="Error interno") from None
+        raise HTTPException(status_code=409, detail=integrity_message()) from None
+    raise HTTPException(
+        status_code=500,
+        detail="Error interno del servidor al guardar. Intente más tarde",
+    ) from None
 
 
 def list_rows(
@@ -214,7 +219,7 @@ def get_row(cur, table: str, pk: str, pk_value: Any) -> dict:
     cur.execute(f"SELECT {cols} FROM {table} WHERE {pk} = %s", (pk_value,))
     row = cur.fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="No encontrado")
+        raise HTTPException(status_code=404, detail=not_found(table))
     return dict(row)
 
 
@@ -222,7 +227,7 @@ def insert_row(cur, table: str, data: dict[str, Any], pk: str) -> dict:
     _check_table(table)
     payload = {k: v for k, v in data.items() if k in ALLOWED_COLUMNS[table] and k not in {"id", "created_at", "updated_at"}}
     if not payload:
-        raise HTTPException(status_code=400, detail="Sin datos para crear")
+        raise HTTPException(status_code=400, detail="No hay datos para crear el registro")
     columns = list(payload.keys())
     values = [payload[c] for c in columns]
     placeholders = ", ".join(["%s"] * len(columns))
@@ -263,5 +268,8 @@ def update_row(cur, table: str, pk: str, pk_value: Any, data: dict[str, Any]) ->
 
 def soft_delete(cur, table: str, pk: str, pk_value: Any) -> dict:
     if "activo" not in ALLOWED_COLUMNS[table]:
-        raise HTTPException(status_code=400, detail="Este catálogo no admite desactivar")
+        raise HTTPException(
+            status_code=400,
+            detail="Este catálogo no admite desactivar registros",
+        )
     return update_row(cur, table, pk, pk_value, {"activo": False})

@@ -4,39 +4,50 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
 
-  --color-olive-950: #1f2a1c;
-  --color-olive-900: #2d3b29;
-  --color-olive-800: #3d4f3a;
-  --color-olive-700: #4f644a;
-  --color-olive-600: #657a5e;
-  --color-olive-500: #7d9374;
-  --color-olive-400: #9aaf90;
-  --color-olive-300: #b8c9af;
-  --color-olive-200: #d4e0cd;
-  --color-olive-100: #e8efe4;
-  --color-olive-50: #f3f7f1;
+  /* Primary — azul oscuro */
+  --color-olive-950: #0f2347;
+  --color-olive-900: #0f2347;
+  --color-olive-800: #1b3a6b;
+  --color-olive-700: #2e5090;
+  --color-olive-600: #3d6ba8;
+  --color-olive-500: #5a85b8;
+  --color-olive-400: #7a9fc8;
+  --color-olive-300: #a8bdd8;
+  --color-olive-200: #e0e0e0;
+  --color-olive-100: #f0f0f0;
+  --color-olive-50: #f5f5f5;
 
-  --color-sage-100: #e4ebe0;
-  --color-sage-50: #f0f4ed;
+  --color-sage-100: #e3f2fd;
+  --color-sage-50: #f0f0f0;
 
-  --color-teal-900: #0a454a;
-  --color-teal-800: #0d5c63;
-  --color-teal-700: #117079;
-  --color-teal-600: #158a94;
+  /* Accent — azul */
+  --color-teal-900: #004080;
+  --color-teal-800: #0066cc;
+  --color-teal-700: #0052a3;
+  --color-teal-600: #0073e6;
 
-  --color-sand-100: #f0ebe3;
-  --color-sand-50: #f7f4ef;
-  --color-sand-0: #fbfaf7;
+  /* Superficies */
+  --color-sand-100: #f0f0f0;
+  --color-sand-50: #f5f5f5;
+  --color-sand-0: #ffffff;
 
-  --color-ink: #1c2419;
-  --color-muted: #5c6758;
-  --color-line: #d9e0d4;
-  --color-danger: #a63d3d;
-  --color-danger-soft: #f8e8e8;
-  --color-success: #3d6b45;
-  --color-success-soft: #e6f0e8;
-  --color-warn: #8a6a2f;
-  --color-warn-soft: #f5efdf;
+  /* Texto y bordes */
+  --color-ink: #1a1a1a;
+  --color-muted: #666666;
+  --color-text-light: #999999;
+  --color-line: #e0e0e0;
+
+  /* Estados */
+  --color-danger: #d32f2f;
+  --color-danger-soft: #ffebee;
+  --color-success: #2e7d32;
+  --color-success-soft: #e8f5e9;
+  --color-warn: #f57c00;
+  --color-warn-soft: #fff3e0;
+
+  /* Chips / badges */
+  --color-chip-bg: #e3f2fd;
+  --color-chip-text: #1565c0;
 }
 
 @layer base {
@@ -53,7 +64,7 @@
   }
 
   ::selection {
-    @apply bg-olive-200 text-olive-950;
+    @apply bg-chip-bg text-olive-950;
   }
 }
 

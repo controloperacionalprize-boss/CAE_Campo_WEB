@@ -11,6 +11,7 @@ import {
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
+import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
 import { apiPatch, apiPost, listPage } from '../../lib/api'
 import { isValidDni } from '../../lib/utils'
@@ -123,16 +124,12 @@ export function ChoferesCrud({ onChanged }: Props) {
                       <StatusPill activo={c.activo} />
                     </Td>
                     <Td className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <EditButton
                         onClick={() => {
                           setEditing(c)
                           setDrawerOpen(true)
                         }}
-                      >
-                        Editar
-                      </Button>
+                      />
                     </Td>
                   </Tr>
                 ))}

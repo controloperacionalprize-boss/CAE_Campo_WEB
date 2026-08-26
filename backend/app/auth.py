@@ -12,7 +12,7 @@ def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="API no configurada",
+            detail="La API no está configurada. Falta la clave de acceso en el servidor",
         )
     provided = x_api_key or ""
     ok = hmac.compare_digest(
@@ -22,6 +22,6 @@ def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key inválida",
+            detail="API key inválida o ausente. Envíe el header X-API-Key",
             headers={"WWW-Authenticate": "ApiKey"},
         )

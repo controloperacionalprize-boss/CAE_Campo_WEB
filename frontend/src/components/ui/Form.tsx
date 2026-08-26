@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react
 import { cn } from '../../lib/utils'
 
 const field =
-  'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-700/15'
+  'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-text-light outline-none transition focus:border-teal-800 focus:ring-2 focus:ring-teal-800/15'
 
 export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
   return (
@@ -31,7 +31,7 @@ export function Input({ label, error, hint, className, id, ...props }: InputProp
       {error ? (
         <p className="mt-1 text-xs text-danger">{error}</p>
       ) : hint ? (
-        <p className="mt-1 text-xs text-muted">{hint}</p>
+        <p className="mt-1 text-xs text-text-light">{hint}</p>
       ) : null}
     </div>
   )

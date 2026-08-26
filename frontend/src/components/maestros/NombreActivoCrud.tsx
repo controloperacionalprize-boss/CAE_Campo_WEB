@@ -11,6 +11,7 @@ import {
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
+import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
 import { apiPatch, apiPost, listPage } from '../../lib/api'
 import { useToast } from '../../context/ToastContext'
@@ -172,16 +173,12 @@ export function NombreActivoCrud({
                       <StatusPill activo={item.activo} />
                     </Td>
                     <Td className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <EditButton
                         onClick={() => {
                           setEditing(item)
                           setDrawerOpen(true)
                         }}
-                      >
-                        Editar
-                      </Button>
+                      />
                     </Td>
                   </Tr>
                 ))}

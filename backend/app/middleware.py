@@ -40,7 +40,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if len(stamps) >= self.max_per_minute:
                 self._hits[ip] = stamps
                 return JSONResponse(
-                    {"detail": "Demasiadas solicitudes"},
+                    {
+                        "detail": "Demasiadas solicitudes. Espere un momento e intente de nuevo",
+                    },
                     status_code=429,
                     headers={"Retry-After": "60"},
                 )
