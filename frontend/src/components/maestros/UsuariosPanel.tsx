@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Form'
@@ -17,16 +17,17 @@ import { apiPatch, apiPost, listPage } from '../../lib/api'
 import { isValidDni } from '../../lib/utils'
 import { useToast } from '../../context/ToastContext'
 import { useLookups } from '../../context/LookupsContext'
-import type { Cargo, Grupo, Rol, Usuario } from '../../types/api'
+import type { Area, Cargo, Grupo, Rol, Usuario } from '../../types/api'
 
 export function UsuariosPanel() {
-  const { grupos, roles, cargos, loading: lookupsLoading, error: lookupsError } = useLookups()
+  const { grupos, roles, cargos, areas, loading: lookupsLoading, error: lookupsError } = useLookups()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [total, setTotal] = useState(0)
   const [incluirInactivos, setIncluirInactivos] = useState(true)
   const [grupoId, setGrupoId] = useState('')
   const [rolId, setRolId] = useState('')
   const [cargoId, setCargoId] = useState('')
+  const [areaId, setAreaId] = useState('')
   const [q, setQ] = useState('')
   const [skip, setSkip] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -47,6 +48,7 @@ export function UsuariosPanel() {
         grupo_id: grupoId || undefined,
         rol_id: rolId || undefined,
         cargo_id: cargoId || undefined,
+        area_id: areaId || undefined,
       })
       setUsuarios(page.items)
       setTotal(page.total)
@@ -61,26 +63,41 @@ export function UsuariosPanel() {
 
   useEffect(() => {
     void loadUsuarios()
-  }, [skip, limit, q, grupoId, rolId, cargoId, incluirInactivos])
+  }, [skip, limit, q, grupoId, rolId, cargoId, areaId, incluirInactivos])
+
+  const grupoById = useMemo(() => new Map(grupos.map((g) => [g.id, g.nombre])), [grupos])
+  const rolById = useMemo(() => new Map(roles.map((r) => [r.id, r.nombre])), [roles])
+  const cargoById = useMemo(() => new Map(cargos.map((c) => [c.id, c.nombre])), [cargos])
+  const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas])
 
   function nombreGrupo(id: number | null) {
     if (id == null) return '—'
-    return grupos.find((g) => g.id === id)?.nombre ?? `#${id}`
+    return grupoById.get(id) ?? `#${id}`
   }
   function nombreRol(id: number | null) {
     if (id == null) return '—'
-    return roles.find((r) => r.id === id)?.nombre ?? `#${id}`
+    return rolById.get(id) ?? `#${id}`
   }
   function nombreCargo(id: number | null) {
     if (id == null) return '—'
-    return cargos.find((c) => c.id === id)?.nombre ?? `#${id}`
+    return cargoById.get(id) ?? `#${id}`
   }
+  function nombreArea(id: number | null) {
+    if (id == null) return '—'
+    const a = areaById.get(id)
+    return a ? `${a.prefijo} · ${a.nombre}` : `#${id}`
+  }
+
+  const areaOptions = useMemo(
+    () => areas.map((a) => ({ value: a.id, label: `${a.prefijo} · ${a.nombre}` })),
+    [areas],
+  )
 
   return (
     <div>
       <PageHeader
         title="Usuarios"
-        description="Cuentas de acceso y asignación de cargo, rol y grupo."
+        description="Cuentas de acceso y asignación de cargo, rol, grupo y área (opcional)."
         actions={
           <Button
             leftIcon={<Plus className="size-4" />}
@@ -135,6 +152,18 @@ export function UsuariosPanel() {
             options={cargos.map((c) => ({ value: c.id, label: c.nombre }))}
           />
         </div>
+        <div className="min-w-[140px] flex-1">
+          <Select
+            label="Área"
+            value={areaId}
+            onChange={(e) => {
+              setAreaId(e.target.value)
+              setSkip(0)
+            }}
+            placeholder={lookupsLoading ? 'Cargando…' : 'Todas'}
+            options={areaOptions}
+          />
+        </div>
         <div className="min-w-[160px] flex-[1.2]">
           <Input
             label="Búsqueda"
@@ -172,6 +201,7 @@ export function UsuariosPanel() {
                 <Th>Cargo</Th>
                 <Th>Rol</Th>
                 <Th>Grupo</Th>
+                <Th>Área</Th>
                 <Th>Activo</Th>
                 <Th />
               </THead>
@@ -183,6 +213,7 @@ export function UsuariosPanel() {
                     <Td>{nombreCargo(u.cargo_id)}</Td>
                     <Td>{nombreRol(u.rol_id)}</Td>
                     <Td className="text-muted">{nombreGrupo(u.grupo_id)}</Td>
+                    <Td className="text-muted">{nombreArea(u.area_id)}</Td>
                     <Td>
                       <StatusPill activo={u.activo} />
                     </Td>
@@ -210,6 +241,7 @@ export function UsuariosPanel() {
         grupos={grupos}
         roles={roles}
         cargos={cargos}
+        areas={areas}
         onSaved={async () => {
           setDrawerOpen(false)
           await loadUsuarios()
@@ -226,6 +258,7 @@ function UsuarioDrawer({
   grupos,
   roles,
   cargos,
+  areas,
   onSaved,
 }: {
   open: boolean
@@ -234,6 +267,7 @@ function UsuarioDrawer({
   grupos: Grupo[]
   roles: Rol[]
   cargos: Cargo[]
+  areas: Area[]
   onSaved: () => Promise<void>
 }) {
   const toast = useToast()
@@ -244,9 +278,15 @@ function UsuarioDrawer({
   const [cargoId, setCargoId] = useState('')
   const [rolId, setRolId] = useState('')
   const [grupoId, setGrupoId] = useState('')
+  const [areaId, setAreaId] = useState('')
   const [activo, setActivo] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const areaOptions = useMemo(() => {
+    return areas
+      .filter((a) => a.activo || a.id === usuario?.area_id)
+      .map((a) => ({ value: a.id, label: `${a.prefijo} · ${a.nombre}` }))
+  }, [areas, usuario?.area_id])
 
   useEffect(() => {
     if (!open) return
@@ -256,6 +296,7 @@ function UsuarioDrawer({
     setCargoId(usuario?.cargo_id != null ? String(usuario.cargo_id) : '')
     setRolId(usuario?.rol_id != null ? String(usuario.rol_id) : '')
     setGrupoId(usuario?.grupo_id != null ? String(usuario.grupo_id) : '')
+    setAreaId(usuario?.area_id != null ? String(usuario.area_id) : '')
     setActivo(usuario?.activo ?? true)
     setErrors({})
   }, [open, usuario])
@@ -277,6 +318,7 @@ function UsuarioDrawer({
       cargo_id: cargoId ? Number(cargoId) : null,
       rol_id: rolId ? Number(rolId) : null,
       grupo_id: grupoId ? Number(grupoId) : null,
+      area_id: areaId ? Number(areaId) : null,
       activo,
     }
 
@@ -341,6 +383,13 @@ function UsuarioDrawer({
           onChange={(e) => setGrupoId(e.target.value)}
           placeholder="Sin grupo"
           options={grupos.map((g) => ({ value: g.id, label: g.nombre }))}
+        />
+        <Select
+          label="Área"
+          value={areaId}
+          onChange={(e) => setAreaId(e.target.value)}
+          placeholder="Sin área"
+          options={areaOptions}
         />
         <Switch checked={activo} onChange={setActivo} label="Usuario activo" />
         <div className="flex gap-2 pt-2">

@@ -109,6 +109,38 @@ def delete_cargo(item_id: int):
     return _deactivate("cargo", "id", item_id)
 
 
+@router.get("/areas")
+def list_areas(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    q: SearchQ = None,
+    activo: ActivoQ = True,
+    incluir_inactivos: IncluirInactivosQ = False,
+):
+    activo = _resolve_activo(activo, incluir_inactivos)
+    return _list("areas", order="prefijo", skip=skip, limit=limit, q=q, filters={"activo": activo})
+
+
+@router.get("/areas/{item_id}", response_model=S.AreaOut)
+def get_area(item_id: int):
+    return _get("areas", "id", item_id)
+
+
+@router.post("/areas", response_model=S.AreaOut, status_code=201)
+def create_area(payload: S.AreaIn):
+    return _create("areas", "id", payload.model_dump())
+
+
+@router.patch("/areas/{item_id}", response_model=S.AreaOut)
+def patch_area(item_id: int, payload: S.AreaPatch):
+    return _patch("areas", "id", item_id, payload.model_dump(exclude_unset=True))
+
+
+@router.delete("/areas/{item_id}", response_model=S.AreaOut)
+def delete_area(item_id: int):
+    return _deactivate("areas", "id", item_id)
+
+
 @router.get("/roles")
 def list_roles(
     skip: int = Query(0, ge=0),
@@ -448,6 +480,7 @@ def list_usuarios(
     grupo_id: int | None = None,
     cargo_id: int | None = None,
     rol_id: int | None = None,
+    area_id: int | None = None,
     dni: Annotated[str | None, Query(max_length=15)] = None,
 ):
     activo = _resolve_activo(activo, incluir_inactivos)
@@ -462,6 +495,7 @@ def list_usuarios(
             "grupo_id": grupo_id,
             "cargo_id": cargo_id,
             "rol_id": rol_id,
+            "area_id": area_id,
             "dni": dni,
         },
     )

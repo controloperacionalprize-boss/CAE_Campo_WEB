@@ -8,6 +8,7 @@ from .errors import fk_message, integrity_message, not_found, unique_message
 
 ALLOWED_TABLES = {
     "actividad_economica",
+    "areas",
     "cargo",
     "chofer",
     "empresa",
@@ -29,6 +30,7 @@ ALLOWED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "areas": {"id", "prefijo", "nombre", "activo", "created_at", "updated_at"},
     "cargo": {"id", "nombre", "activo", "created_at", "updated_at"},
     "chofer": {"id", "dni", "nombre", "activo", "created_at", "updated_at"},
     "empresa": {
@@ -96,6 +98,7 @@ ALLOWED_COLUMNS = {
         "activo",
         "rol_id",
         "grupo_id",
+        "area_id",
         "created_at",
         "updated_at",
     },
@@ -112,6 +115,7 @@ ALLOWED_COLUMNS = {
 
 SEARCH_COLUMNS = {
     "actividad_economica": ("codigo", "descripcion"),
+    "areas": ("prefijo", "nombre"),
     "cargo": ("nombre",),
     "chofer": ("dni", "nombre"),
     "empresa": ("ruc", "razon_social"),
@@ -149,6 +153,14 @@ def _raise_db(exc: Exception) -> None:
         raise HTTPException(status_code=409, detail=unique_message(exc)) from None
     if isinstance(exc, ForeignKeyViolation) or code == errorcodes.FOREIGN_KEY_VIOLATION:
         raise HTTPException(status_code=409, detail=fk_message(exc)) from None
+    if code == errorcodes.CHECK_VIOLATION:
+        text = f"{getattr(exc, 'pgerror', '') or ''} {getattr(getattr(exc, 'diag', None), 'constraint_name', '') or ''}".lower()
+        detail = (
+            "El prefijo debe ir en mayúsculas, sin espacios"
+            if "prefijo" in text
+            else "Los datos no cumplen una regla del sistema"
+        )
+        raise HTTPException(status_code=400, detail=detail) from None
     if isinstance(exc, IntegrityError):
         raise HTTPException(status_code=409, detail=integrity_message()) from None
     raise HTTPException(

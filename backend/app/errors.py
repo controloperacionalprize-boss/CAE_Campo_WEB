@@ -11,6 +11,7 @@ FIELD_LABELS: dict[str, str] = {
     "activo": "activo",
     "actividad_economica_codigo": "código de actividad económica",
     "area_ha": "área (ha)",
+    "area_id": "área",
     "cargo_id": "cargo",
     "chofer_id": "chofer",
     "codigo": "código",
@@ -27,6 +28,7 @@ FIELD_LABELS: dict[str, str] = {
     "modulo_id": "módulo",
     "nombre": "nombre",
     "placa": "placa",
+    "prefijo": "prefijo",
     "proveedor_id": "proveedor",
     "q": "búsqueda",
     "razon_social": "razón social",
@@ -39,6 +41,7 @@ FIELD_LABELS: dict[str, str] = {
 
 TABLE_LABELS: dict[str, str] = {
     "actividad_economica": "actividad económica",
+    "areas": "área",
     "cargo": "cargo",
     "chofer": "chofer",
     "empresa": "empresa",
@@ -58,11 +61,13 @@ UNIQUE_BY_COLUMN: dict[str, str] = {
     "dni": "Ya existe un registro con ese DNI.",
     "nombre": "Ya existe un registro con ese nombre.",
     "placa": "Ya existe un vehículo con esa placa.",
+    "prefijo": "Ya existe un área con ese prefijo.",
     "ruc": "Ya existe una empresa con ese RUC.",
 }
 
 FK_BY_COLUMN: dict[str, str] = {
     "actividad_economica_codigo": "La actividad económica indicada no existe",
+    "area_id": "El área indicada no existe",
     "cargo_id": "El cargo indicado no existe",
     "chofer_id": "El chofer indicado no existe",
     "empresa_id": "La empresa indicada no existe",
@@ -97,6 +102,7 @@ def field_label(name: str) -> str:
 
 _NOT_FOUND: dict[str, str] = {
     "actividad_economica": "No se encontró la actividad económica",
+    "areas": "No se encontró el área",
     "cargo": "No se encontró el cargo",
     "chofer": "No se encontró el chofer",
     "empresa": "No se encontró la empresa",
@@ -224,6 +230,13 @@ def _one_validation_msg(err: dict[str, Any]) -> str:
     if "enum" in err_type:
         return f"El campo {label} tiene un valor no permitido."
 
+    if "value_error" in err_type:
+        custom = raw_msg.split(",", 1)[-1].strip() if "," in raw_msg else raw_msg
+        if custom.lower().startswith("value error"):
+            custom = ""
+        if custom:
+            return custom if custom.endswith(".") else f"{custom}."
+        return f"El campo {label} no es válido."
     if raw_msg and not raw_msg.lower().startswith("value error"):
         # Evitar inglés crudo de Pydantic cuando ya tenemos tipo cubierto
         if any(

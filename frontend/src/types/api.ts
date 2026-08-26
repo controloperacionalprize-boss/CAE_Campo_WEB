@@ -56,6 +56,7 @@ export type Grupo = {
   activo: boolean
 }
 
+export type Area = { id: number; prefijo: string; nombre: string; activo: boolean }
 export type Rol = { id: number; nombre: string; activo: boolean }
 export type Cargo = { id: number; nombre: string; activo: boolean }
 
@@ -66,6 +67,7 @@ export type Usuario = {
   cargo_id: number | null
   rol_id: number | null
   grupo_id: number | null
+  area_id: number | null
   activo: boolean
 }
 

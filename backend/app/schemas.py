@@ -2,7 +2,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_PREFIJO_MSG = "El prefijo debe tener 1 a 10 letras o números, sin espacios ni símbolos"
+
+
+def _prefijo_ok(v: str) -> str:
+    cleaned = v.strip().upper()
+    if not cleaned or not cleaned.isalnum() or len(cleaned) > 10:
+        raise ValueError(_PREFIJO_MSG)
+    return cleaned
 
 
 class ORMModel(BaseModel):
@@ -30,6 +39,43 @@ class ActividadEconomicaIn(BaseModel):
 
 class ActividadEconomicaPatch(BaseModel):
     descripcion: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class AreaOut(ORMModel):
+    id: int
+    prefijo: str
+    nombre: str
+    activo: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AreaIn(BaseModel):
+    prefijo: str = Field(min_length=1, max_length=10)
+    nombre: str = Field(min_length=1, max_length=200)
+    activo: bool = True
+
+    @field_validator("prefijo", mode="before")
+    @classmethod
+    def prefijo_mayusculas(cls, v: object) -> str:
+        if not isinstance(v, str):
+            raise ValueError(_PREFIJO_MSG)
+        return _prefijo_ok(v)
+
+
+class AreaPatch(BaseModel):
+    prefijo: str | None = Field(default=None, min_length=1, max_length=10)
+    nombre: str | None = Field(default=None, min_length=1, max_length=200)
+    activo: bool | None = None
+
+    @field_validator("prefijo", mode="before")
+    @classmethod
+    def prefijo_mayusculas(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError(_PREFIJO_MSG)
+        return _prefijo_ok(v)
 
 
 class CargoOut(ORMModel):
@@ -249,6 +295,7 @@ class UsuarioOut(ORMModel):
     cargo_id: int | None
     rol_id: int | None
     grupo_id: int | None
+    area_id: int | None
     activo: bool
     created_at: datetime
     updated_at: datetime
@@ -260,6 +307,7 @@ class UsuarioIn(BaseModel):
     cargo_id: int | None = None
     rol_id: int | None = None
     grupo_id: int | None = None
+    area_id: int | None = None
     activo: bool = True
 
 
@@ -269,6 +317,7 @@ class UsuarioPatch(BaseModel):
     cargo_id: int | None = None
     rol_id: int | None = None
     grupo_id: int | None = None
+    area_id: int | None = None
     activo: bool | None = None
 
 

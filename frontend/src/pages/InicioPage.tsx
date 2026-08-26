@@ -27,7 +27,7 @@ const accesos = [
   {
     to: '/personas',
     title: 'Personas',
-    desc: 'Usuarios, grupos y roles',
+    desc: 'Usuarios, grupos, roles y áreas',
     icon: Users,
   },
   {

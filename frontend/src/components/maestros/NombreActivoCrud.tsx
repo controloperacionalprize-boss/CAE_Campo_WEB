@@ -24,7 +24,7 @@ export type NombreActivoItem = {
   [key: string]: unknown
 }
 
-type ExtraField = {
+export type ExtraField = {
   key: string
   label: string
   /** Valor inicial al crear / editar */
@@ -35,6 +35,15 @@ type ExtraField = {
   validate?: (value: string) => string | null
   /** Incluir en body POST/PATCH */
   toBody: (value: string) => Record<string, unknown>
+  /** Si es true, el campo va encima de Nombre (p. ej. prefijo de área) */
+  beforeNombre?: boolean
+}
+
+export type ExtraColumn = {
+  header: string
+  render: (item: NombreActivoItem & Record<string, unknown>) => ReactNode
+  /** Si es true, la columna va antes de Nombre */
+  beforeNombre?: boolean
 }
 
 type Props = {
@@ -46,11 +55,7 @@ type Props = {
   onChanged?: () => void
   /** Columnas / campos extra además de nombre+activo */
   extraFields?: ExtraField[]
-  /** Columnas extra en la tabla (después de nombre) */
-  extraColumns?: {
-    header: string
-    render: (item: NombreActivoItem & Record<string, unknown>) => ReactNode
-  }[]
+  extraColumns?: ExtraColumn[]
 }
 
 /**
@@ -155,20 +160,34 @@ export function NombreActivoCrud({
           <TableShell>
             <Table>
               <THead>
+                {extraColumns
+                  .filter((c) => c.beforeNombre)
+                  .map((c) => (
+                    <Th key={c.header}>{c.header}</Th>
+                  ))}
                 <Th>Nombre</Th>
-                {extraColumns.map((c) => (
-                  <Th key={c.header}>{c.header}</Th>
-                ))}
+                {extraColumns
+                  .filter((c) => !c.beforeNombre)
+                  .map((c) => (
+                    <Th key={c.header}>{c.header}</Th>
+                  ))}
                 <Th>Estado</Th>
                 <Th />
               </THead>
               <tbody>
                 {items.map((item) => (
                   <Tr key={item.id}>
+                    {extraColumns
+                      .filter((c) => c.beforeNombre)
+                      .map((c) => (
+                        <Td key={c.header}>{c.render(item)}</Td>
+                      ))}
                     <Td className="font-medium">{item.nombre}</Td>
-                    {extraColumns.map((c) => (
-                      <Td key={c.header}>{c.render(item)}</Td>
-                    ))}
+                    {extraColumns
+                      .filter((c) => !c.beforeNombre)
+                      .map((c) => (
+                        <Td key={c.header}>{c.render(item)}</Td>
+                      ))}
                     <Td>
                       <StatusPill activo={item.activo} />
                     </Td>
@@ -279,18 +298,28 @@ function NombreActivoDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={isCreate ? `Nuevo ${singular}` : `Editar ${singular}`}>
       <form onSubmit={submit} className="space-y-4">
+        {extraFields
+          .filter((f) => f.beforeNombre)
+          .map((f) => (
+            <div key={f.key}>
+              {f.render(extras[f.key] ?? '', (v) => setExtras((prev) => ({ ...prev, [f.key]: v })))}
+              {errors[f.key] && <p className="mt-1 text-xs text-danger">{errors[f.key]}</p>}
+            </div>
+          ))}
         <Input
           label="Nombre"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           error={errors.nombre}
         />
-        {extraFields.map((f) => (
-          <div key={f.key}>
-            {f.render(extras[f.key] ?? '', (v) => setExtras((prev) => ({ ...prev, [f.key]: v })))}
-            {errors[f.key] && <p className="mt-1 text-xs text-danger">{errors[f.key]}</p>}
-          </div>
-        ))}
+        {extraFields
+          .filter((f) => !f.beforeNombre)
+          .map((f) => (
+            <div key={f.key}>
+              {f.render(extras[f.key] ?? '', (v) => setExtras((prev) => ({ ...prev, [f.key]: v })))}
+              {errors[f.key] && <p className="mt-1 text-xs text-danger">{errors[f.key]}</p>}
+            </div>
+          ))}
         <Switch checked={activo} onChange={setActivo} label="Activo" />
         <div className="flex gap-2 pt-2">
           <Button type="submit" className="flex-1" disabled={saving}>
