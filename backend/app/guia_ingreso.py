@@ -270,6 +270,10 @@ def _totales(jabas_completas: int, jabas_incompletas: int, jarras_jabas: int, ja
 def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     usuario = resolve_usuario(cur, usuario_id=payload.usuario_id, usuario_dni=payload.usuario_dni)
     snap_u = resolve_sesion_movil(cur, payload, snapshot_usuario(cur, usuario))
+    if not snap_u.get("grupo_id") and payload.grupo_id:
+        grupo = get_row(cur, "grupo", "id", payload.grupo_id)
+        snap_u["grupo_id"] = grupo["id"]
+        snap_u["grupo"] = grupo["nombre"] or ""
     snap_l = resolve_lote_movil(
         cur,
         modulo=payload.modulo,
