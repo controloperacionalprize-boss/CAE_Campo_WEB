@@ -76,7 +76,7 @@ def get_guia(item_id: int):
 
 @router.post("/guias-ingreso", response_model=S.GuiaIngresoOut, status_code=201)
 def create_guia(payload: S.GuiaIngresoIn):
-    """Alta desde la app móvil. El código lo envía el cliente; nombre/grupo/fundo/ha se resuelven en el servidor."""
+    """Alta desde la app móvil. El cliente envía DNI, grupo/fundo de la sesión, ubicación, placa y conteos."""
     with get_conn() as conn:
         return crear(conn.cursor(), payload)
 

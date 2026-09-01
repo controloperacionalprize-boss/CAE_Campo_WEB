@@ -442,8 +442,8 @@ class GuiaIngresoOut(ORMModel):
 
 
 class GuiaIngresoIn(BaseModel):
-    """POST del móvil. Nombre, grupo, fundo y ha se completan en el servidor.
-    codigo, módulo, turno, lote, placa y conteos vienen del cliente.
+    """POST del móvil. El operador entra con DNI y elige grupo/fundo en la app.
+    codigo, ubicación, placa y conteos vienen del cliente; nombre y ha se completan aquí.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -453,6 +453,10 @@ class GuiaIngresoIn(BaseModel):
     usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
     fecha: date | None = None
     hora_envio: time | None = None
+    grupo_id: int | None = None
+    grupo: str | None = Field(default=None, max_length=80)
+    fundo_id: int | None = None
+    fundo: str | None = Field(default=None, max_length=120)
     modulo: str = Field(min_length=1, max_length=20)
     turno: str = Field(min_length=1, max_length=20)
     lote: str = Field(min_length=1, max_length=30)
@@ -482,6 +486,8 @@ class GuiaIngresoIn(BaseModel):
         "envase_principal",
         "observacion",
         "usuario_dni",
+        "grupo",
+        "fundo",
         mode="before",
     )
     @classmethod
@@ -489,6 +495,13 @@ class GuiaIngresoIn(BaseModel):
         if isinstance(v, str):
             return v.strip()
         return v
+
+    @field_validator("grupo", "fundo")
+    @classmethod
+    def vacio_none(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        return v.strip()
 
     @field_validator("codigo", mode="before")
     @classmethod

@@ -40,26 +40,42 @@ def resolve_usuario(cur, *, usuario_id: int | None, usuario_dni: str | None) -> 
 
 
 def snapshot_usuario(cur, usuario: dict) -> dict:
-    grupo_id = usuario.get("grupo_id")
-    grupo_nombre = ""
-    fundo_id = None
-    fundo_nombre = ""
-    if grupo_id:
-        grupo = get_row(cur, "grupo", "id", grupo_id)
-        grupo_nombre = grupo["nombre"] or ""
-        fundo_id = grupo.get("fundo_id")
-        if fundo_id:
-            fundo = get_row(cur, "fundo", "id", fundo_id)
-            fundo_nombre = fundo["nombre"] or ""
-    return {
+    data = {
         "usuario_id": usuario["id"],
         "usuario_dni": usuario["dni"],
         "usuario_nombre": usuario["nombre"],
-        "grupo_id": grupo_id,
-        "grupo": grupo_nombre,
+        "grupo_id": None,
+        "grupo": "",
+        "fundo_id": None,
+        "fundo": "",
+    }
+    grupo_id = usuario.get("grupo_id")
+    if grupo_id:
+        data.update(snapshot_grupo(cur, get_row(cur, "grupo", "id", grupo_id), exigir_activo=False))
+    return data
+
+
+def snapshot_grupo(cur, grupo: dict, *, exigir_activo: bool = True) -> dict:
+    if exigir_activo:
+        _require_activo(grupo, "El grupo indicado está inactivo")
+    fundo_id = grupo.get("fundo_id")
+    fundo_nombre = ""
+    if fundo_id:
+        fundo = get_row(cur, "fundo", "id", fundo_id)
+        if exigir_activo:
+            _require_activo(fundo, "El fundo indicado está inactivo")
+        fundo_nombre = fundo["nombre"] or ""
+    return {
+        "grupo_id": grupo["id"],
+        "grupo": grupo["nombre"] or "",
         "fundo_id": fundo_id,
         "fundo": fundo_nombre,
     }
+
+
+def snapshot_fundo(cur, fundo: dict) -> dict:
+    _require_activo(fundo, "El fundo indicado está inactivo")
+    return {"fundo_id": fundo["id"], "fundo": fundo["nombre"] or ""}
 
 
 def snapshot_lote(cur, lote_id: int) -> dict:
@@ -87,60 +103,122 @@ def snapshot_vehiculo(cur, vehiculo_id: int) -> dict:
     return {"vehiculo_id": vehiculo["id"], "placa": vehiculo["placa"]}
 
 
-def _uno_por_codigo(rows: list, codigo: str, mensaje: str) -> dict:
-    wanted = codigo.strip().upper()
-    match = [r for r in rows if str(r.get("codigo") or "").strip().upper() == wanted]
+def _norm(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _uno_por_campo(rows: list, campo: str, valor: str, mensaje: str) -> dict:
+    wanted = _norm(valor)
+    match = [r for r in rows if _norm(r.get(campo)) == wanted]
     if not match:
         raise HTTPException(status_code=400, detail=mensaje)
     if len(match) > 1:
-        raise HTTPException(status_code=400, detail=f"{mensaje} (hay más de un registro con ese código)")
+        raise HTTPException(status_code=400, detail=f"{mensaje} (hay más de un registro)")
     return dict(match[0])
+
+
+def resolve_sesion_movil(cur, payload: S.GuiaIngresoIn, snap_u: dict) -> dict:
+    """Grupo y fundo de la sesión del móvil, no el grupo fijo del maestro de usuario."""
+    sesion = dict(snap_u)
+    grupo = None
+    fundo = None
+
+    if payload.grupo_id is not None:
+        grupo = get_row(cur, "grupo", "id", payload.grupo_id)
+    elif payload.grupo:
+        filtros: dict = {"activo": True}
+        if payload.fundo_id is not None:
+            filtros["fundo_id"] = payload.fundo_id
+        rows, _ = list_rows(cur, "grupo", filters=filtros, skip=0, limit=50, order="id")
+        if not rows and "fundo_id" in filtros:
+            rows, _ = list_rows(cur, "grupo", filters={"activo": True}, skip=0, limit=50, order="id")
+        grupo = _uno_por_campo(rows, "nombre", payload.grupo, "El grupo indicado no existe")
+
+    if payload.fundo_id is not None:
+        fundo = get_row(cur, "fundo", "id", payload.fundo_id)
+    elif payload.fundo:
+        rows, _ = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=50, order="id")
+        fundo = _uno_por_campo(rows, "nombre", payload.fundo, "El fundo indicado no existe")
+
+    if grupo:
+        sesion.update(snapshot_grupo(cur, grupo))
+    if fundo:
+        snap_f = snapshot_fundo(cur, fundo)
+        if grupo is not None and sesion.get("fundo_id") and sesion["fundo_id"] != snap_f["fundo_id"]:
+            raise HTTPException(status_code=400, detail="El grupo no pertenece al fundo indicado")
+        sesion.update(snap_f)
+        if grupo is None and snap_u.get("fundo_id") != snap_f["fundo_id"]:
+            sesion["grupo_id"] = None
+            sesion["grupo"] = ""
+    return sesion
+
+
+def _lotes_del_turno(cur, turno_id: int, lote: str) -> list:
+    lotes, _ = list_rows(
+        cur,
+        "lote",
+        filters={"turno_id": turno_id, "codigo": lote.strip().upper(), "activo": True},
+        skip=0,
+        limit=20,
+        order="id",
+    )
+    if lotes:
+        return lotes
+    lotes, _ = list_rows(
+        cur,
+        "lote",
+        filters={"turno_id": turno_id, "activo": True},
+        skip=0,
+        limit=500,
+        order="codigo",
+    )
+    wanted = _norm(lote)
+    return [r for r in lotes if _norm(r.get("codigo")) == wanted]
 
 
 def resolve_lote_movil(cur, *, modulo: str, turno: str, lote: str, fundo_id: int | None) -> dict:
     filtros_mod: dict = {"codigo": modulo.strip().upper(), "activo": True}
     if fundo_id is not None:
         filtros_mod["fundo_id"] = fundo_id
-    modulos, _ = list_rows(cur, "modulo", filters=filtros_mod, skip=0, limit=20, order="id")
-    if not modulos and fundo_id is not None:
-        modulos, _ = list_rows(
+    modulos, _ = list_rows(cur, "modulo", filters=filtros_mod, skip=0, limit=50, order="id")
+    if not modulos:
+        detalle = "en ese fundo" if fundo_id is not None else ""
+        raise HTTPException(
+            status_code=400,
+            detail=f"El módulo indicado no existe {detalle}".strip(),
+        )
+
+    coincidencias: list[dict] = []
+    for mod in modulos:
+        turnos, _ = list_rows(
             cur,
-            "modulo",
-            filters={"codigo": modulo.strip().upper(), "activo": True},
+            "turno",
+            filters={"modulo_id": mod["id"], "codigo": turno.strip().upper(), "activo": True},
             skip=0,
             limit=20,
             order="id",
         )
-    mod = _uno_por_codigo(modulos, modulo, "El módulo indicado no existe")
-    turnos, _ = list_rows(
-        cur,
-        "turno",
-        filters={"modulo_id": mod["id"], "codigo": turno.strip().upper(), "activo": True},
-        skip=0,
-        limit=20,
-        order="id",
-    )
-    tur = _uno_por_codigo(turnos, turno, "El turno indicado no existe en ese módulo")
-    lotes, _ = list_rows(
-        cur,
-        "lote",
-        filters={"turno_id": tur["id"], "codigo": lote.strip().upper(), "activo": True},
-        skip=0,
-        limit=20,
-        order="id",
-    )
-    if not lotes:
-        lotes, _ = list_rows(
-            cur,
-            "lote",
-            filters={"turno_id": tur["id"], "activo": True},
-            skip=0,
-            limit=500,
-            order="codigo",
+        turnos = [t for t in turnos if _norm(t.get("codigo")) == _norm(turno)]
+        for tur in turnos:
+            for lot in _lotes_del_turno(cur, tur["id"], lote):
+                coincidencias.append(lot)
+
+    if not coincidencias:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay un lote activo con ese módulo, turno y código",
         )
-        lotes = [r for r in lotes if str(r.get("codigo") or "").strip().upper() == lote.strip().upper()]
-    lot = _uno_por_codigo(lotes, lote, "El lote indicado no existe en ese turno")
-    return snapshot_lote(cur, lot["id"])
+    if len(coincidencias) > 1:
+        detalle = (
+            "en el fundo indicado"
+            if fundo_id is not None
+            else "indique el fundo de la sesión"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hay más de un lote con ese módulo, turno y código; {detalle}",
+        )
+    return snapshot_lote(cur, coincidencias[0]["id"])
 
 
 def resolve_vehiculo_placa(cur, placa: str) -> dict:
@@ -191,7 +269,7 @@ def _totales(jabas_completas: int, jabas_incompletas: int, jarras_jabas: int, ja
 
 def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     usuario = resolve_usuario(cur, usuario_id=payload.usuario_id, usuario_dni=payload.usuario_dni)
-    snap_u = snapshot_usuario(cur, usuario)
+    snap_u = resolve_sesion_movil(cur, payload, snapshot_usuario(cur, usuario))
     snap_l = resolve_lote_movil(
         cur,
         modulo=payload.modulo,
@@ -203,6 +281,8 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
 
     fundo_id = snap_u["fundo_id"] or snap_l["fundo_lote_id"]
     fundo = snap_u["fundo"] or snap_l["fundo_lote"]
+    if snap_u["fundo_id"] and snap_l["fundo_lote_id"] != snap_u["fundo_id"]:
+        raise HTTPException(status_code=400, detail="El lote no pertenece al fundo de la sesión")
 
     fecha = payload.fecha or date.today()
     hora = payload.hora_envio or datetime.now().time().replace(second=0, microsecond=0)

@@ -111,7 +111,7 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
             limit=500,
             order="nombre",
         )
-
+    
     return {
         "fundo": fundo,
         "empresa": empresa,
@@ -120,7 +120,6 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
         "lotes": lotes,
         "grupos": grupos,
     }
-
 
 @router.get("/dashboard/resumen")
 def dashboard_resumen():
