@@ -275,7 +275,7 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
         modulo=payload.modulo,
         turno=payload.turno,
         lote=payload.lote,
-        fundo_id=snap_u.get("fundo_id"),
+        fundo_id=snap_u.get("fundo_id") or payload.fundo_id,
     )
     snap_v = resolve_vehiculo_placa(cur, payload.placa)
 
