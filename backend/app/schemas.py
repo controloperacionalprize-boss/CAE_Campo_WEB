@@ -448,7 +448,7 @@ class GuiaIngresoIn(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    codigo: str = Field(min_length=8, max_length=24, pattern=r"^GI-\d{6}-\d{4}$")
+    codigo: str = Field(min_length=1, max_length=24)
     usuario_id: int | None = None
     usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
     fecha: date | None = None

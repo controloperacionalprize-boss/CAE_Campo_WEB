@@ -239,8 +239,6 @@ def _one_validation_msg(err: dict[str, Any]) -> str:
             return "El DNI debe tener entre 8 y 15 caracteres (números o letras)."
         if field == "ruc":
             return "El RUC debe tener exactamente 11 dígitos."
-        if field == "codigo":
-            return "El código debe tener un formato válido."
         return f"El campo {label} tiene un formato inválido."
     if err_type in {"int_parsing", "int_type", "integer_parsing", "integer_type"}:
         return f"El campo {label} debe ser un número entero."
