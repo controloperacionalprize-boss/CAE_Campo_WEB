@@ -21,6 +21,7 @@ ALLOWED_TABLES = {
     "turno",
     "usuario",
     "vehiculo",
+    "guia_ingreso",
 }
 
 ALLOWED_COLUMNS = {
@@ -111,6 +112,41 @@ ALLOWED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "guia_ingreso": {
+        "id",
+        "codigo",
+        "fecha",
+        "hora_envio",
+        "usuario_id",
+        "usuario_dni",
+        "usuario_nombre",
+        "grupo_id",
+        "grupo",
+        "fundo_id",
+        "fundo",
+        "modulo_id",
+        "modulo",
+        "turno_id",
+        "turno",
+        "lote_id",
+        "lote",
+        "tipo_producto",
+        "tipo_llenado",
+        "envase_principal",
+        "jabas_completas",
+        "jabas_incompletas",
+        "jarras_jabas",
+        "jarras_extras",
+        "jabas_totales",
+        "jarras_totales",
+        "ha",
+        "observacion",
+        "vehiculo_id",
+        "placa",
+        "estado",
+        "created_at",
+        "updated_at",
+    },
 }
 
 SEARCH_COLUMNS = {
@@ -128,6 +164,7 @@ SEARCH_COLUMNS = {
     "turno": ("codigo", "nombre"),
     "usuario": ("dni", "nombre"),
     "vehiculo": ("placa",),
+    "guia_ingreso": ("codigo", "usuario_dni", "usuario_nombre", "fundo", "placa", "lote"),
 }
 
 
@@ -158,6 +195,8 @@ def _raise_db(exc: Exception) -> None:
         detail = (
             "El prefijo debe ir en mayúsculas, sin espacios"
             if "prefijo" in text
+            else "El estado debe ser registrado o anulado"
+            if "estado" in text
             else "Los datos no cumplen una regla del sistema"
         )
         raise HTTPException(status_code=400, detail=detail) from None
@@ -178,6 +217,7 @@ def list_rows(
     skip: int = 0,
     limit: int = 100,
     order: str = "id",
+    descending: bool = False,
 ) -> tuple[list[dict], int]:
     _check_table(table)
     cols = sorted(ALLOWED_COLUMNS[table])
@@ -216,8 +256,9 @@ def list_rows(
     select_sql = ", ".join(cols)
     cur.execute(f"SELECT COUNT(*) AS n FROM {table} {where_sql}", params)
     total = int(cur.fetchone()["n"])
+    direction = "DESC" if descending else "ASC"
     cur.execute(
-        f"SELECT {select_sql} FROM {table} {where_sql} ORDER BY {order} LIMIT %s OFFSET %s",
+        f"SELECT {select_sql} FROM {table} {where_sql} ORDER BY {order} {direction} LIMIT %s OFFSET %s",
         [*params, limit, skip],
     )
     return list(cur.fetchall()), total

@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 _PREFIJO_MSG = "El prefijo debe tener 1 a 10 letras o números, sin espacios ni símbolos"
 
@@ -374,3 +374,180 @@ class EmpresaNodo(ORMModel):
     razon_social: str
     activo: bool
     fundos: list[FundoNodo]
+
+
+_HORA_MSG = "La hora de envío debe tener el formato HH:MM"
+
+
+def _hora_hhmm(v: object) -> time:
+    if isinstance(v, time):
+        return v.replace(second=0, microsecond=0)
+    if isinstance(v, datetime):
+        return v.time().replace(second=0, microsecond=0)
+    if isinstance(v, str):
+        cleaned = v.strip()
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(cleaned, fmt).time().replace(second=0, microsecond=0)
+            except ValueError:
+                continue
+    raise ValueError(_HORA_MSG)
+
+
+ESTADOS_GUIA = ("registrado", "anulado")
+
+
+class GuiaIngresoOut(ORMModel):
+    id: int
+    codigo: str
+    fecha: date
+    hora_envio: time
+    usuario_id: int
+    usuario_dni: str
+    usuario_nombre: str
+    grupo_id: int | None
+    grupo: str
+    fundo_id: int | None
+    fundo: str
+    modulo_id: int
+    modulo: str
+    turno_id: int
+    turno: str
+    lote_id: int
+    lote: str
+    tipo_producto: str
+    tipo_llenado: Decimal
+    envase_principal: str
+    jabas_completas: int
+    jabas_incompletas: int
+    jarras_jabas: int
+    jarras_extras: int
+    jabas_totales: int
+    jarras_totales: int
+    ha: Decimal
+    observacion: str
+    vehiculo_id: int
+    placa: str
+    estado: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("hora_envio")
+    def _hora(self, v: time) -> str:
+        return v.strftime("%H:%M")
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class GuiaIngresoIn(BaseModel):
+    """POST del móvil. Nombre, grupo, fundo y ha se completan en el servidor.
+    codigo, módulo, turno, lote, placa y conteos vienen del cliente.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    codigo: str = Field(min_length=8, max_length=24, pattern=r"^GI-\d{6}-\d{4}$")
+    usuario_id: int | None = None
+    usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
+    fecha: date | None = None
+    hora_envio: time | None = None
+    modulo: str = Field(min_length=1, max_length=20)
+    turno: str = Field(min_length=1, max_length=20)
+    lote: str = Field(min_length=1, max_length=30)
+    tipo_producto: str = Field(min_length=1, max_length=80)
+    tipo_llenado: Decimal
+    envase_principal: str = Field(min_length=1, max_length=80)
+    jabas_completas: int = Field(default=0, ge=0)
+    jabas_incompletas: int = Field(default=0, ge=0)
+    jarras_jabas: int = Field(default=0, ge=0)
+    jarras_extras: int = Field(default=0, ge=0)
+    observacion: str = Field(default="", max_length=2000)
+    placa: str = Field(min_length=1, max_length=15)
+
+    @field_validator("hora_envio", mode="before")
+    @classmethod
+    def parse_hora(cls, v: object) -> time | None:
+        if v is None or v == "":
+            return None
+        return _hora_hhmm(v)
+
+    @field_validator(
+        "modulo",
+        "turno",
+        "lote",
+        "placa",
+        "tipo_producto",
+        "envase_principal",
+        "observacion",
+        "usuario_dni",
+        mode="before",
+    )
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("codigo", mode="before")
+    @classmethod
+    def codigo_norm(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip().upper()
+        return v
+
+    @field_validator("modulo", "turno", "lote", "placa", "tipo_producto", "envase_principal")
+    @classmethod
+    def mayusculas(cls, v: str) -> str:
+        return v.upper()
+
+
+class GuiaIngresoPatch(BaseModel):
+    tipo_producto: str | None = Field(default=None, min_length=1, max_length=80)
+    tipo_llenado: Decimal | None = None
+    envase_principal: str | None = Field(default=None, min_length=1, max_length=80)
+    jabas_completas: int | None = Field(default=None, ge=0)
+    jabas_incompletas: int | None = Field(default=None, ge=0)
+    jarras_jabas: int | None = Field(default=None, ge=0)
+    jarras_extras: int | None = Field(default=None, ge=0)
+    observacion: str | None = Field(default=None, max_length=2000)
+    estado: str | None = None
+    vehiculo_id: int | None = None
+
+    @field_validator("tipo_producto", "envase_principal", "observacion", mode="before")
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("estado", mode="before")
+    @classmethod
+    def estado_ok(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("El estado debe ser registrado o anulado")
+        cleaned = v.strip().lower()
+        if cleaned not in ESTADOS_GUIA:
+            raise ValueError("El estado debe ser registrado o anulado")
+        return cleaned
+
+
+class GuiaContextoOut(BaseModel):
+    usuario_id: int
+    usuario_dni: str
+    usuario_nombre: str
+    grupo_id: int | None
+    grupo: str
+    fundo_id: int | None
+    fundo: str
+    modulo: str | None = None
+    turno: str | None = None
+    lote: str | None = None
+    ha: Decimal | None = None
+    placa: str | None = None
+    vehiculo_id: int | None = None
+    lote_id: int | None = None
+

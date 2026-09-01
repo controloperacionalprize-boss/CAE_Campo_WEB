@@ -76,3 +76,4 @@ uvicorn app.main:app --reload --app-dir backend --host 127.0.0.1 --port 8001
 - `GET /api/v1/arbol/ubicaciones`
 - `GET /api/v1/empresas` · `fundos?empresa_id=` · `modulos?fundo_id=` · `turnos?modulo_id=` · `lotes?turno_id=`
 - `GET /api/v1/usuarios` · `grupos` · `roles` · `cargos` · `choferes` · `vehiculos` · `proveedores`
+- `POST /api/v1/guias-ingreso` (app móvil). El `codigo` lo envía el móvil. El servidor completa nombre/grupo/fundo, `ha` del lote, totales y `estado`; valida la placa.

@@ -37,6 +37,28 @@ FIELD_LABELS: dict[str, str] = {
     "skip": "paginación",
     "turno_id": "turno",
     "x-api-key": "X-API-Key",
+    "usuario_id": "usuario",
+    "usuario_dni": "DNI",
+    "usuario_nombre": "nombre de usuario",
+    "fecha": "fecha",
+    "hora_envio": "hora de envío",
+    "lote_id": "lote",
+    "vehiculo_id": "vehículo",
+    "tipo_producto": "tipo de producto",
+    "tipo_llenado": "tipo de llenado",
+    "envase_principal": "envase principal",
+    "jabas_completas": "jabas completas",
+    "jabas_incompletas": "jabas incompletas",
+    "jarras_jabas": "jarras en jabas",
+    "jarras_extras": "jarras extras",
+    "jabas_totales": "jabas totales",
+    "jarras_totales": "jarras totales",
+    "ha": "hectáreas",
+    "observacion": "observación",
+    "estado": "estado",
+    "modulo": "módulo",
+    "turno": "turno",
+    "lote": "lote",
 }
 
 TABLE_LABELS: dict[str, str] = {
@@ -54,6 +76,7 @@ TABLE_LABELS: dict[str, str] = {
     "turno": "turno",
     "usuario": "usuario",
     "vehiculo": "vehículo",
+    "guia_ingreso": "guía de ingreso",
 }
 
 UNIQUE_BY_COLUMN: dict[str, str] = {
@@ -77,6 +100,9 @@ FK_BY_COLUMN: dict[str, str] = {
     "proveedor_id": "El proveedor indicado no existe",
     "rol_id": "El rol indicado no existe",
     "turno_id": "El turno indicado no existe",
+    "lote_id": "El lote indicado no existe",
+    "usuario_id": "El usuario indicado no existe",
+    "vehiculo_id": "El vehículo indicado no existe",
 }
 
 _HTTP_DEFAULTS: dict[int, str] = {
@@ -115,6 +141,7 @@ _NOT_FOUND: dict[str, str] = {
     "turno": "No se encontró el turno",
     "usuario": "No se encontró el usuario",
     "vehiculo": "No se encontró el vehículo",
+    "guia_ingreso": "No se encontró la guía de ingreso",
 }
 
 
@@ -212,6 +239,8 @@ def _one_validation_msg(err: dict[str, Any]) -> str:
             return "El DNI debe tener entre 8 y 15 caracteres (números o letras)."
         if field == "ruc":
             return "El RUC debe tener exactamente 11 dígitos."
+        if field == "codigo":
+            return "El código debe tener un formato válido."
         return f"El campo {label} tiene un formato inválido."
     if err_type in {"int_parsing", "int_type", "integer_parsing", "integer_type"}:
         return f"El campo {label} debe ser un número entero."
@@ -219,6 +248,10 @@ def _one_validation_msg(err: dict[str, Any]) -> str:
         return f"El campo {label} debe ser un número."
     if err_type in {"bool_parsing", "bool_type"}:
         return f"El campo {label} debe ser verdadero o falso."
+    if err_type in {"date_parsing", "date_type", "date_from_datetime_parsing"}:
+        return f"El campo {label} debe ser una fecha (AAAA-MM-DD)."
+    if err_type in {"time_parsing", "time_type"}:
+        return f"El campo {label} debe ser una hora (HH:MM)."
     if "greater_than_equal" in err_type:
         return f"El campo {label} debe ser mayor o igual a {ctx.get('ge', 0)}."
     if "less_than_equal" in err_type:
