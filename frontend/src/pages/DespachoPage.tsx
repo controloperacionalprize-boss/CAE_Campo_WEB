@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Calendar, ChevronRight, Clock } from 'lucide-react'
 import { Card, CardHeader } from '../components/ui/Card'
 import {
@@ -12,6 +12,8 @@ import {
 } from '../components/ui/Feedback'
 import { Input, SearchInput, Select } from '../components/ui/Form'
 import { listPage, isAbortError } from '../lib/api'
+import { applyGuiaWithQuery, pruneKnownGuias, sortGuiasByCodigoDesc } from '../lib/guiaLive'
+import { LiveStatusBadge, useOnGuiaLive } from '../context/LiveEventsContext'
 import { cn } from '../lib/utils'
 import { useDebounce } from '../hooks/useDebounce'
 import type { GuiaIngreso } from '../types/api'
@@ -99,25 +101,42 @@ export function DespachoPage() {
   const [tipoProducto, setTipoProducto] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const knownRef = useRef(new Map<number, GuiaIngreso>())
+  const filtersRef = useRef({ fecha, estado, q: debouncedQ })
+  filtersRef.current = { fecha, estado, q: debouncedQ }
+  const totalRef = useRef(total)
+  totalRef.current = total
 
   async function load(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
+    const filters = {
+      fecha: fecha || undefined,
+      estado: estado || undefined,
+      q: debouncedQ || undefined,
+    }
     try {
       const page = await listPage<GuiaIngreso>('/api/v1/guias-ingreso', {
         skip: 0,
         limit: 500,
-        fecha: fecha || undefined,
-        estado: estado || undefined,
-        q: debouncedQ || undefined,
+        ...filters,
         signal,
       })
       if (signal?.aborted) return
-      setItems(page.items)
-      setTotal(page.total)
+      const known = knownRef.current
+      let nextItems = page.items
+      let nextTotal = page.total
+      for (const guia of known.values()) {
+        const merged = applyGuiaWithQuery(nextItems, nextTotal, guia, filters)
+        nextItems = merged.items
+        nextTotal = merged.total
+      }
+      pruneKnownGuias(page.items, known)
+      setItems(sortGuiasByCodigoDesc(nextItems))
+      setTotal(nextTotal)
       setSelectedId((current) => {
-        if (current && page.items.some((g) => g.id === current)) return current
-        return page.items[0]?.id ?? null
+        if (current && nextItems.some((g) => g.id === current)) return current
+        return nextItems[0]?.id ?? null
       })
     } catch (e) {
       if (isAbortError(e)) return
@@ -135,6 +154,22 @@ export function DespachoPage() {
     void load(ac.signal)
     return () => ac.abort()
   }, [fecha, estado, debouncedQ])
+
+  useOnGuiaLive((event) => {
+    const guia = event.guia
+    knownRef.current.set(guia.id, guia)
+    const filters = {
+      fecha: filtersRef.current.fecha || undefined,
+      estado: filtersRef.current.estado || undefined,
+      q: filtersRef.current.q || undefined,
+    }
+    setItems((current) => {
+      const merged = applyGuiaWithQuery(current, totalRef.current, guia, filters)
+      totalRef.current = merged.total
+      setTotal(merged.total)
+      return merged.items
+    })
+  })
 
   const fundos = useMemo(() => uniqueSorted(items.map((g) => g.fundo)), [items])
   const scopedFundo = useMemo(
@@ -197,7 +232,10 @@ export function DespachoPage() {
 
   return (
     <div>
-      <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Despacho' }]} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Despacho' }]} />
+        <LiveStatusBadge className="mb-3" />
+      </div>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 

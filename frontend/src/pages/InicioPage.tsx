@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -12,6 +12,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useOnGuiaLive } from '../context/LiveEventsContext'
+import { applyGuiaForFecha, overlayKnownGuias, pruneKnownGuias } from '../lib/guiaLive'
 import { listAllItems, listPage, isAbortError } from '../lib/api'
 import { cn, formatFechaLarga } from '../lib/utils'
 import { Button } from '../components/ui/Button'
@@ -163,6 +165,9 @@ export function InicioPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [reloadTick, setReloadTick] = useState(0)
+  const fechaRef = useRef(fecha)
+  fechaRef.current = fecha
+  const knownRef = useRef(new Map<number, GuiaIngreso>())
 
   useEffect(() => {
     const ac = new AbortController()
@@ -174,8 +179,10 @@ export function InicioPage() {
       listPage<GuiaIngreso>('/api/v1/guias-ingreso', { fecha: prev, skip: 0, limit: 500, signal: ac.signal }),
     ])
       .then(([hoyPage, ayerPage]) => {
-        setGuias(hoyPage.items)
-        setAyer(ayerPage.items)
+        const known = knownRef.current
+        setGuias(overlayKnownGuias(hoyPage.items, known.values(), (list, g) => applyGuiaForFecha(list, g, fecha)))
+        setAyer(overlayKnownGuias(ayerPage.items, known.values(), (list, g) => applyGuiaForFecha(list, g, prev)))
+        pruneKnownGuias([...hoyPage.items, ...ayerPage.items], known)
       })
       .catch((e) => {
         if (isAbortError(e)) return
@@ -186,6 +193,14 @@ export function InicioPage() {
       })
     return () => ac.abort()
   }, [fecha, reloadTick])
+
+  useOnGuiaLive((event) => {
+    const g = event.guia
+    knownRef.current.set(g.id, g)
+    const f = fechaRef.current
+    setGuias((list) => applyGuiaForFecha(list, g, f))
+    setAyer((list) => applyGuiaForFecha(list, g, addDays(f, -1)))
+  })
 
   useEffect(() => {
     const ac = new AbortController()

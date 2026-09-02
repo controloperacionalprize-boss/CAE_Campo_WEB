@@ -7,6 +7,7 @@ from .. import schemas as S
 from ..crud import get_row, list_rows
 from ..db import get_conn
 from ..guia_ingreso import contexto, crear, parchear, serialize_guia
+from ..realtime import publish_guia
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
 
@@ -78,10 +79,14 @@ def get_guia(item_id: int):
 def create_guia(payload: S.GuiaIngresoIn):
     """Alta desde la app móvil. El cliente envía DNI, grupo/fundo de la sesión, ubicación, placa y conteos."""
     with get_conn() as conn:
-        return crear(conn.cursor(), payload)
+        row = crear(conn.cursor(), payload)
+    publish_guia("guia.created", row)
+    return row
 
 
 @router.patch("/guias-ingreso/{item_id}", response_model=S.GuiaIngresoOut)
 def patch_guia(item_id: int, payload: S.GuiaIngresoPatch):
     with get_conn() as conn:
-        return parchear(conn.cursor(), item_id, payload)
+        row = parchear(conn.cursor(), item_id, payload)
+    publish_guia("guia.updated", row)
+    return row

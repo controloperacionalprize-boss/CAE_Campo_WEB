@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,8 @@ from .config import get_settings
 from .db import close_pool, get_conn
 from .errors import format_validation, json_error, normalize_http_detail
 from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from .realtime import hub
+from .routers.eventos import router as eventos_router
 from .routers.guias import router as guias_router
 from .routers.maestros import router as maestros_router
 from .routers.ubicaciones import router as ubicaciones_router
@@ -22,7 +25,9 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    hub.bind_loop(asyncio.get_running_loop())
     yield
+    hub.close()
     close_pool()
 
 
@@ -63,11 +68,12 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "Accept"],
 )
 app.include_router(maestros_router, dependencies=[Depends(require_api_key)])
 app.include_router(ubicaciones_router, dependencies=[Depends(require_api_key)])
 app.include_router(guias_router, dependencies=[Depends(require_api_key)])
+app.include_router(eventos_router, dependencies=[Depends(require_api_key)])
 
 
 @app.exception_handler(RequestValidationError)

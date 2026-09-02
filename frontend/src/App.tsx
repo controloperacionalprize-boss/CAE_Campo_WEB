@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { LookupsProvider } from './context/LookupsContext'
+import { LiveEventsProvider } from './context/LiveEventsContext'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
@@ -23,7 +24,9 @@ export default function App() {
               <Route
                 element={
                   <LookupsProvider>
-                    <AppShell />
+                    <LiveEventsProvider>
+                      <AppShell />
+                    </LiveEventsProvider>
                   </LookupsProvider>
                 }
               >
