@@ -1,42 +1,44 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { Input, Select, Switch } from '../ui/Form'
+import { FormActions, FormSection, Input, SearchInput, Select, Switch } from '../ui/Form'
 import {
+  CollapsibleFilters,
   EmptyState,
   ErrorBanner,
   FilterBar,
-  PageHeader,
   SkeletonRows,
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
 import { EditButton } from '../ui/TableActions'
-import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
-import { apiPatch, apiPost, listPage } from '../../lib/api'
+import { Pagination, Table, TableShell, THead, Th, Td, TdTruncate, Tr } from '../ui/Table'
+import { apiPatch, apiPost, isAbortError, listPage } from '../../lib/api'
 import { isValidDni } from '../../lib/utils'
+import { useDebounce } from '../../hooks/useDebounce'
 import { useToast } from '../../context/ToastContext'
 import { useLookups } from '../../context/LookupsContext'
 import type { Area, Cargo, Grupo, Rol, Usuario } from '../../types/api'
 
-export function UsuariosPanel() {
+export function UsuariosPanel({ createSignal }: { createSignal?: number }) {
   const { grupos, roles, cargos, areas, loading: lookupsLoading, error: lookupsError } = useLookups()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [total, setTotal] = useState(0)
-  const [incluirInactivos, setIncluirInactivos] = useState(true)
+  const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [grupoId, setGrupoId] = useState('')
   const [rolId, setRolId] = useState('')
   const [cargoId, setCargoId] = useState('')
   const [areaId, setAreaId] = useState('')
   const [q, setQ] = useState('')
+  const debouncedQ = useDebounce(q)
   const [skip, setSkip] = useState(0)
+  const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editing, setEditing] = useState<Usuario | null>(null)
-  const limit = 8
 
-  async function loadUsuarios() {
+  async function loadUsuarios(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
     try {
@@ -44,26 +46,53 @@ export function UsuariosPanel() {
         incluirInactivos,
         skip,
         limit,
-        q: q || undefined,
+        q: debouncedQ || undefined,
         grupo_id: grupoId || undefined,
         rol_id: rolId || undefined,
         cargo_id: cargoId || undefined,
         area_id: areaId || undefined,
+        signal,
       })
+      if (signal?.aborted) return
       setUsuarios(page.items)
       setTotal(page.total)
     } catch (e) {
+      if (isAbortError(e)) return
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los usuarios')
       setUsuarios([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadUsuarios()
-  }, [skip, limit, q, grupoId, rolId, cargoId, areaId, incluirInactivos])
+    const ac = new AbortController()
+    void loadUsuarios(ac.signal)
+    return () => ac.abort()
+  }, [skip, limit, debouncedQ, grupoId, rolId, cargoId, areaId, incluirInactivos])
+
+  function openCreate() {
+    setEditing(null)
+    setDrawerOpen(true)
+  }
+
+  useEffect(() => {
+    if (!createSignal) return
+    openCreate()
+  }, [createSignal])
+
+  const hasActiveFilters = !!(grupoId || rolId || cargoId || areaId || q || incluirInactivos)
+
+  function clearFilters() {
+    setGrupoId('')
+    setRolId('')
+    setCargoId('')
+    setAreaId('')
+    setQ('')
+    setIncluirInactivos(false)
+    setSkip(0)
+  }
 
   const grupoById = useMemo(() => new Map(grupos.map((g) => [g.id, g.nombre])), [grupos])
   const rolById = useMemo(() => new Map(roles.map((r) => [r.id, r.nombre])), [roles])
@@ -95,77 +124,13 @@ export function UsuariosPanel() {
 
   return (
     <div>
-      <PageHeader
-        title="Usuarios"
-        description="Cuentas de acceso y asignación de cargo, rol, grupo y área (opcional)."
-        actions={
-          <Button
-            leftIcon={<Plus className="size-4" />}
-            onClick={() => {
-              setEditing(null)
-              setDrawerOpen(true)
-            }}
-          >
-            Nuevo usuario
-          </Button>
-        }
-      />
-
       {(error || lookupsError) && (
         <ErrorBanner message={error ?? lookupsError ?? ''} onRetry={loadUsuarios} />
       )}
 
-      <FilterBar>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Grupo"
-            value={grupoId}
-            onChange={(e) => {
-              setGrupoId(e.target.value)
-              setSkip(0)
-            }}
-            placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
-            options={grupos.map((g) => ({ value: g.id, label: g.nombre }))}
-          />
-        </div>
-        <div className="min-w-[120px] flex-1">
-          <Select
-            label="Rol"
-            value={rolId}
-            onChange={(e) => {
-              setRolId(e.target.value)
-              setSkip(0)
-            }}
-            placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
-            options={roles.map((r) => ({ value: r.id, label: r.nombre }))}
-          />
-        </div>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Cargo"
-            value={cargoId}
-            onChange={(e) => {
-              setCargoId(e.target.value)
-              setSkip(0)
-            }}
-            placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
-            options={cargos.map((c) => ({ value: c.id, label: c.nombre }))}
-          />
-        </div>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Área"
-            value={areaId}
-            onChange={(e) => {
-              setAreaId(e.target.value)
-              setSkip(0)
-            }}
-            placeholder={lookupsLoading ? 'Cargando…' : 'Todas'}
-            options={areaOptions}
-          />
-        </div>
-        <div className="min-w-[160px] flex-[1.2]">
-          <Input
+      <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters}>
+        <div className="min-w-[160px] flex-1">
+          <SearchInput
             label="Búsqueda"
             placeholder="DNI o nombre…"
             value={q}
@@ -175,46 +140,114 @@ export function UsuariosPanel() {
             }}
           />
         </div>
-        <div className="flex h-[42px] items-center sm:mb-0.5">
-          <Switch
-            checked={incluirInactivos}
-            onChange={(v) => {
-              setIncluirInactivos(v)
-              setSkip(0)
-            }}
-            label="Incluir inactivos"
-          />
-        </div>
+        <CollapsibleFilters label="Filtros avanzados">
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Grupo"
+              value={grupoId}
+              onChange={(e) => {
+                setGrupoId(e.target.value)
+                setSkip(0)
+              }}
+              placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
+              options={grupos.map((g) => ({ value: g.id, label: g.nombre }))}
+            />
+          </div>
+          <div className="min-w-[120px] flex-1">
+            <Select
+              label="Rol"
+              value={rolId}
+              onChange={(e) => {
+                setRolId(e.target.value)
+                setSkip(0)
+              }}
+              placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
+              options={roles.map((r) => ({ value: r.id, label: r.nombre }))}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Cargo"
+              value={cargoId}
+              onChange={(e) => {
+                setCargoId(e.target.value)
+                setSkip(0)
+              }}
+              placeholder={lookupsLoading ? 'Cargando…' : 'Todos'}
+              options={cargos.map((c) => ({ value: c.id, label: c.nombre }))}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Área"
+              value={areaId}
+              onChange={(e) => {
+                setAreaId(e.target.value)
+                setSkip(0)
+              }}
+              placeholder={lookupsLoading ? 'Cargando…' : 'Todas'}
+              options={areaOptions}
+            />
+          </div>
+          <div className="flex h-[42px] items-center sm:mb-0.5">
+            <Switch
+              checked={incluirInactivos}
+              onChange={(v) => {
+                setIncluirInactivos(v)
+                setSkip(0)
+              }}
+              label="Incluir inactivos"
+            />
+          </div>
+        </CollapsibleFilters>
       </FilterBar>
 
       {loading ? (
         <SkeletonRows rows={6} />
       ) : total === 0 ? (
-        <EmptyState title="Sin usuarios" description="No hay coincidencias con los filtros." />
+        <EmptyState
+          title="Sin usuarios"
+          description={
+            hasActiveFilters
+              ? 'No hay coincidencias con los filtros actuales.'
+              : 'Aún no hay usuarios registrados.'
+          }
+          action={
+            hasActiveFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
+            ) : (
+              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+                Nuevo usuario
+              </Button>
+            )
+          }
+        />
       ) : (
         <>
-          <TableShell>
+          <TableShell stickyHeader>
             <Table>
-              <THead>
+              <THead sticky>
                 <Th>DNI</Th>
                 <Th>Nombre</Th>
-                <Th>Cargo</Th>
-                <Th>Rol</Th>
-                <Th>Grupo</Th>
-                <Th>Área</Th>
-                <Th>Activo</Th>
-                <Th />
+                <Th className="hidden md:table-cell">Cargo</Th>
+                <Th className="hidden lg:table-cell">Rol</Th>
+                <Th className="hidden lg:table-cell">Grupo</Th>
+                <Th className="hidden xl:table-cell">Área</Th>
+                <Th className="hidden sm:table-cell">Estado</Th>
+                <Th className="text-right">Acciones</Th>
               </THead>
               <tbody>
                 {usuarios.map((u) => (
                   <Tr key={u.id}>
                     <Td className="font-medium tabular-nums">{u.dni}</Td>
-                    <Td>{u.nombre}</Td>
-                    <Td>{nombreCargo(u.cargo_id)}</Td>
-                    <Td>{nombreRol(u.rol_id)}</Td>
-                    <Td className="text-muted">{nombreGrupo(u.grupo_id)}</Td>
-                    <Td className="text-muted">{nombreArea(u.area_id)}</Td>
-                    <Td>
+                    <TdTruncate maxWidth="180px">{u.nombre}</TdTruncate>
+                    <Td className="hidden md:table-cell">{nombreCargo(u.cargo_id)}</Td>
+                    <Td className="hidden lg:table-cell">{nombreRol(u.rol_id)}</Td>
+                    <Td className="hidden text-muted lg:table-cell">{nombreGrupo(u.grupo_id)}</Td>
+                    <Td className="hidden text-muted xl:table-cell">{nombreArea(u.area_id)}</Td>
+                    <Td className="hidden sm:table-cell">
                       <StatusPill activo={u.activo} />
                     </Td>
                     <Td className="text-right">
@@ -230,7 +263,16 @@ export function UsuariosPanel() {
               </tbody>
             </Table>
           </TableShell>
-          <Pagination skip={skip} limit={limit} total={total} onChange={setSkip} />
+          <Pagination
+            skip={skip}
+            limit={limit}
+            total={total}
+            onChange={setSkip}
+            onLimitChange={(n) => {
+              setLimit(n)
+              setSkip(0)
+            }}
+          />
         </>
       )}
 
@@ -342,64 +384,67 @@ function UsuarioDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={isCreate ? 'Nuevo usuario' : 'Editar usuario'}>
       <form onSubmit={submit} className="space-y-4">
-        <Input
-          label="DNI"
-          value={dni}
-          onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
-          error={errors.dni}
-        />
-        <Input
-          label="Nombre completo"
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          error={errors.nombre}
-        />
-        {isCreate && (
+        <FormSection title="Identificación">
           <Input
-            label="Contraseña"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={errors.password}
+            label="DNI"
+            value={dni}
+            onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            error={errors.dni}
+            required
           />
-        )}
-        <Select
-          label="Cargo"
-          value={cargoId}
-          onChange={(e) => setCargoId(e.target.value)}
-          placeholder="Sin cargo"
-          options={cargos.map((c) => ({ value: c.id, label: c.nombre }))}
-        />
-        <Select
-          label="Rol"
-          value={rolId}
-          onChange={(e) => setRolId(e.target.value)}
-          placeholder="Sin rol"
-          options={roles.map((r) => ({ value: r.id, label: r.nombre }))}
-        />
-        <Select
-          label="Grupo"
-          value={grupoId}
-          onChange={(e) => setGrupoId(e.target.value)}
-          placeholder="Sin grupo"
-          options={grupos.map((g) => ({ value: g.id, label: g.nombre }))}
-        />
-        <Select
-          label="Área"
-          value={areaId}
-          onChange={(e) => setAreaId(e.target.value)}
-          placeholder="Sin área"
-          options={areaOptions}
-        />
+          <Input
+            label="Nombre completo"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            error={errors.nombre}
+            required
+          />
+          {isCreate && (
+            <Input
+              label="Contraseña"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={errors.password}
+              hint="Mínimo 4 caracteres"
+              required
+            />
+          )}
+        </FormSection>
+
+        <FormSection title="Asignación">
+          <Select
+            label="Cargo"
+            value={cargoId}
+            onChange={(e) => setCargoId(e.target.value)}
+            placeholder="Sin cargo"
+            options={cargos.map((c) => ({ value: c.id, label: c.nombre }))}
+          />
+          <Select
+            label="Rol"
+            value={rolId}
+            onChange={(e) => setRolId(e.target.value)}
+            placeholder="Sin rol"
+            options={roles.map((r) => ({ value: r.id, label: r.nombre }))}
+          />
+          <Select
+            label="Grupo"
+            value={grupoId}
+            onChange={(e) => setGrupoId(e.target.value)}
+            placeholder="Sin grupo"
+            options={grupos.map((g) => ({ value: g.id, label: g.nombre }))}
+          />
+          <Select
+            label="Área"
+            value={areaId}
+            onChange={(e) => setAreaId(e.target.value)}
+            placeholder="Sin área"
+            options={areaOptions}
+          />
+        </FormSection>
+
         <Switch checked={activo} onChange={setActivo} label="Usuario activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )

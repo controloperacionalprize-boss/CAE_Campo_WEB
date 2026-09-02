@@ -1,13 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { listAllItems } from '../lib/api'
+import { isAbortError, listAllItems } from '../lib/api'
 import type { Area, Cargo, Chofer, Grupo, Proveedor, Rol } from '../types/api'
-
-/**
- * Catálogos de referencia (grupos, roles, cargos, áreas, proveedores, choferes).
- * Cambian poco, así que se cargan UNA vez por sesión y se comparten entre
- * Personas, Flota, Ubicaciones, etc. — evita repetir las mismas llamadas
- * cada vez que el usuario visita una pantalla.
- */
 
 type LookupsState = {
   grupos: Grupo[]
@@ -19,6 +12,7 @@ type LookupsState = {
   loading: boolean
   error: string | null
   refresh: () => void
+  ensureLoaded: () => void
 }
 
 const LookupsContext = createContext<LookupsState | null>(null)
@@ -30,25 +24,37 @@ export function LookupsProvider({ children }: { children: ReactNode }) {
   const [areas, setAreas] = useState<Area[]>([])
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [choferes, setChoferes] = useState<Chofer[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
+  const [wanted, setWanted] = useState(false)
+
+  const ensureLoaded = useCallback(() => setWanted(true), [])
+  const refresh = useCallback(() => {
+    setWanted(true)
+    setNonce((n) => n + 1)
+  }, [])
 
   useEffect(() => {
-    let cancelled = false
+    if (!wanted) return
+    const ac = new AbortController()
     setLoading(true)
     setError(null)
 
     Promise.allSettled([
-      listAllItems<Grupo>('/api/v1/grupos', { incluirInactivos: true }),
-      listAllItems<Rol>('/api/v1/roles', { incluirInactivos: true }),
-      listAllItems<Cargo>('/api/v1/cargos', { incluirInactivos: true }),
-      listAllItems<Area>('/api/v1/areas', { incluirInactivos: true }),
-      listAllItems<Proveedor>('/api/v1/proveedores', { incluirInactivos: true }),
-      listAllItems<Chofer>('/api/v1/choferes', { incluirInactivos: true }),
+      listAllItems<Grupo>('/api/v1/grupos', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Rol>('/api/v1/roles', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Cargo>('/api/v1/cargos', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Area>('/api/v1/areas', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Proveedor>('/api/v1/proveedores', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Chofer>('/api/v1/choferes', { incluirInactivos: true, signal: ac.signal }),
     ])
       .then((results) => {
-        if (cancelled) return
+        if (ac.signal.aborted) return
+        const aborted = results.some(
+          (r) => r.status === 'rejected' && isAbortError(r.reason),
+        )
+        if (aborted) return
         const value = <T,>(i: number, fallback: T[]): T[] =>
           results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<T[]>).value : fallback
         setGrupos(value(0, []))
@@ -66,19 +72,26 @@ export function LookupsProvider({ children }: { children: ReactNode }) {
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!ac.signal.aborted) setLoading(false)
       })
 
-    return () => {
-      cancelled = true
-    }
-  }, [nonce])
-
-  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+    return () => ac.abort()
+  }, [wanted, nonce])
 
   const value = useMemo<LookupsState>(
-    () => ({ grupos, roles, cargos, areas, proveedores, choferes, loading, error, refresh }),
-    [grupos, roles, cargos, areas, proveedores, choferes, loading, error, refresh],
+    () => ({
+      grupos,
+      roles,
+      cargos,
+      areas,
+      proveedores,
+      choferes,
+      loading,
+      error,
+      refresh,
+      ensureLoaded,
+    }),
+    [grupos, roles, cargos, areas, proveedores, choferes, loading, error, refresh, ensureLoaded],
   )
 
   return <LookupsContext.Provider value={value}>{children}</LookupsContext.Provider>
@@ -87,5 +100,8 @@ export function LookupsProvider({ children }: { children: ReactNode }) {
 export function useLookups() {
   const ctx = useContext(LookupsContext)
   if (!ctx) throw new Error('useLookups debe usarse dentro de LookupsProvider')
+  useEffect(() => {
+    ctx.ensureLoaded()
+  }, [ctx.ensureLoaded])
   return ctx
 }

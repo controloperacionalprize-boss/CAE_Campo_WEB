@@ -4,7 +4,7 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", Georgia, serif;
 
-  /* Primary — azul oscuro */
+  /* Primary — azul oscuro corporativo */
   --color-olive-950: #0f2347;
   --color-olive-900: #0f2347;
   --color-olive-800: #1b3a6b;
@@ -13,12 +13,12 @@
   --color-olive-500: #5a85b8;
   --color-olive-400: #7a9fc8;
   --color-olive-300: #a8bdd8;
-  --color-olive-200: #e0e0e0;
-  --color-olive-100: #f0f0f0;
-  --color-olive-50: #f5f5f5;
+  --color-olive-200: #e8ecf2;
+  --color-olive-100: #f3f5f8;
+  --color-olive-50: #f8f9fb;
 
-  --color-sage-100: #e3f2fd;
-  --color-sage-50: #f0f0f0;
+  --color-sage-100: #e8f1fb;
+  --color-sage-50: #f4f8fc;
 
   /* Accent — azul */
   --color-teal-900: #004080;
@@ -27,32 +27,43 @@
   --color-teal-600: #0073e6;
 
   /* Superficies */
-  --color-sand-100: #f0f0f0;
-  --color-sand-50: #f5f5f5;
+  --color-sand-100: #eef1f5;
+  --color-sand-50: #f6f8fa;
   --color-sand-0: #ffffff;
 
   /* Texto y bordes */
-  --color-ink: #1a1a1a;
-  --color-muted: #666666;
-  --color-text-light: #999999;
-  --color-line: #e0e0e0;
+  --color-ink: #1a2332;
+  --color-muted: #5c6678;
+  --color-text-light: #8b95a5;
+  --color-line: #dde3eb;
 
   /* Estados */
-  --color-danger: #d32f2f;
-  --color-danger-soft: #ffebee;
+  --color-danger: #c62828;
+  --color-danger-soft: #fce8e8;
   --color-success: #2e7d32;
   --color-success-soft: #e8f5e9;
-  --color-warn: #f57c00;
+  --color-warn: #e65100;
   --color-warn-soft: #fff3e0;
+  --color-info: #1565c0;
+  --color-info-soft: #e3f2fd;
 
   /* Chips / badges */
   --color-chip-bg: #e3f2fd;
   --color-chip-text: #1565c0;
+
+  /* Radios y sombras */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --shadow-card: 0 1px 2px rgba(15, 35, 71, 0.04), 0 1px 0 rgba(15, 35, 71, 0.02);
+  --shadow-elevated: 0 4px 16px rgba(15, 35, 71, 0.08);
 }
 
 @layer base {
   html {
     @apply antialiased;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -66,10 +77,27 @@
   ::selection {
     @apply bg-chip-bg text-olive-950;
   }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-teal-800;
+  }
 }
 
 @layer utilities {
   .font-display {
     font-family: var(--font-display);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }

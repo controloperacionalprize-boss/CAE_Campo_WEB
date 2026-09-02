@@ -1,37 +1,48 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { Input, Select, Switch } from '../ui/Form'
+import { FormActions, FormSection, Input, SearchInput, Select, Switch } from '../ui/Form'
 import {
   EmptyState,
   ErrorBanner,
   FilterBar,
-  PageHeader,
   SkeletonRows,
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
 import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
-import { apiPatch, apiPost, listPage } from '../../lib/api'
+import { apiPatch, apiPost, isAbortError, listPage } from '../../lib/api'
+import { useDebounce } from '../../hooks/useDebounce'
 import { useToast } from '../../context/ToastContext'
 import { useLookups } from '../../context/LookupsContext'
 import type { Chofer, Proveedor, Vehiculo } from '../../types/api'
 
-export function VehiculosPanel() {
+export function VehiculosPanel({ createSignal }: { createSignal?: number }) {
   const { proveedores, choferes, loading: lookupsLoading, error: lookupsError } = useLookups()
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([])
   const [total, setTotal] = useState(0)
   const [proveedorId, setProveedorId] = useState('')
+  const [q, setQ] = useState('')
+  const debouncedQ = useDebounce(q)
   const [soloActivos, setSoloActivos] = useState(true)
   const [skip, setSkip] = useState(0)
+  const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Vehiculo | null>(null)
   const [creating, setCreating] = useState(false)
-  const limit = 8
 
-  async function loadVehiculos() {
+  const hasActiveFilters = !!proveedorId || !!q || !soloActivos
+
+  function clearFilters() {
+    setProveedorId('')
+    setQ('')
+    setSoloActivos(true)
+    setSkip(0)
+  }
+
+  async function loadVehiculos(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
     try {
@@ -40,21 +51,37 @@ export function VehiculosPanel() {
         skip,
         limit,
         proveedor_id: proveedorId || undefined,
+        q: debouncedQ || undefined,
+        signal,
       })
+      if (signal?.aborted) return
       setVehiculos(page.items)
       setTotal(page.total)
     } catch (e) {
+      if (isAbortError(e)) return
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los vehículos')
       setVehiculos([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadVehiculos()
-  }, [skip, limit, soloActivos, proveedorId])
+    const ac = new AbortController()
+    void loadVehiculos(ac.signal)
+    return () => ac.abort()
+  }, [skip, limit, soloActivos, proveedorId, debouncedQ])
+
+  function openCreate() {
+    setEditing(null)
+    setCreating(true)
+  }
+
+  useEffect(() => {
+    if (!createSignal) return
+    openCreate()
+  }, [createSignal])
 
   function nombreProveedor(id: number) {
     return proveedores.find((p) => p.id === id)?.nombre ?? `#${id}`
@@ -66,21 +93,22 @@ export function VehiculosPanel() {
 
   return (
     <div>
-      <PageHeader
-        title="Vehículos"
-        description="Placas, proveedores y choferes asignados."
-        actions={
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
-            Nuevo vehículo
-          </Button>
-        }
-      />
-
       {(error || lookupsError) && (
         <ErrorBanner message={error ?? lookupsError ?? ''} onRetry={loadVehiculos} />
       )}
 
-      <FilterBar>
+      <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters}>
+        <div className="min-w-[160px] flex-1">
+          <SearchInput
+            label="Búsqueda"
+            placeholder="Placa…"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value)
+              setSkip(0)
+            }}
+          />
+        </div>
         <div className="min-w-[200px] flex-1">
           <Select
             label="Proveedor"
@@ -108,24 +136,34 @@ export function VehiculosPanel() {
       {loading ? (
         <SkeletonRows rows={5} />
       ) : total === 0 ? (
-        <EmptyState title="Sin vehículos" description="No hay unidades con los filtros actuales." />
+        <EmptyState
+          title="Sin vehículos"
+          description={hasActiveFilters ? 'No hay unidades con los filtros actuales.' : 'Aún no hay vehículos registrados.'}
+          action={
+            hasActiveFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>Limpiar filtros</Button>
+            ) : (
+              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>Nuevo vehículo</Button>
+            )
+          }
+        />
       ) : (
         <>
-          <TableShell>
+          <TableShell stickyHeader>
             <Table>
-              <THead>
+              <THead sticky>
                 <Th>Placa</Th>
-                <Th>Proveedor</Th>
-                <Th>Chofer</Th>
-                <Th>Activo</Th>
-                <Th />
+                <Th className="hidden sm:table-cell">Proveedor</Th>
+                <Th className="hidden md:table-cell">Chofer</Th>
+                <Th>Estado</Th>
+                <Th className="text-right">Acciones</Th>
               </THead>
               <tbody>
                 {vehiculos.map((v) => (
                   <Tr key={v.id}>
                     <Td className="font-medium tracking-wide">{v.placa}</Td>
-                    <Td>{nombreProveedor(v.proveedor_id)}</Td>
-                    <Td className={v.chofer_id == null ? 'text-muted' : ''}>
+                    <Td className="hidden sm:table-cell">{nombreProveedor(v.proveedor_id)}</Td>
+                    <Td className={`hidden md:table-cell ${v.chofer_id == null ? 'text-muted' : ''}`}>
                       {nombreChofer(v.chofer_id)}
                     </Td>
                     <Td>
@@ -139,7 +177,13 @@ export function VehiculosPanel() {
               </tbody>
             </Table>
           </TableShell>
-          <Pagination skip={skip} limit={limit} total={total} onChange={setSkip} />
+          <Pagination
+            skip={skip}
+            limit={limit}
+            total={total}
+            onChange={setSkip}
+            onLimitChange={(n) => { setLimit(n); setSkip(0) }}
+          />
         </>
       )}
 
@@ -243,36 +287,33 @@ function VehiculoFormDrawer({
   return (
     <Drawer open={open} onClose={onClose} title={isCreate ? 'Nuevo vehículo' : `Editar ${vehiculo?.placa}`}>
       <form onSubmit={submit} className="space-y-4">
-        <Input
-          label="Placa"
-          value={placa}
-          onChange={(e) => setPlaca(e.target.value.toUpperCase())}
-          error={error}
-          placeholder="ABC-123"
-          maxLength={15}
-        />
-        <Select
-          label="Proveedor"
-          value={proveedorId}
-          onChange={(e) => setProveedorId(e.target.value)}
-          options={proveedores.map((p) => ({ value: p.id, label: p.nombre }))}
-        />
-        <Select
-          label="Chofer"
-          value={choferId}
-          onChange={(e) => setChoferId(e.target.value)}
-          placeholder="Sin asignar"
-          options={choferes.map((c) => ({ value: c.id, label: `${c.nombre} (${c.dni})` }))}
-        />
+        <FormSection title="Vehículo">
+          <Input
+            label="Placa"
+            value={placa}
+            onChange={(e) => setPlaca(e.target.value.toUpperCase())}
+            error={error}
+            placeholder="ABC-123"
+            maxLength={15}
+            required
+          />
+          <Select
+            label="Proveedor"
+            value={proveedorId}
+            onChange={(e) => setProveedorId(e.target.value)}
+            options={proveedores.map((p) => ({ value: p.id, label: p.nombre }))}
+            required
+          />
+          <Select
+            label="Chofer"
+            value={choferId}
+            onChange={(e) => setChoferId(e.target.value)}
+            placeholder="Sin asignar"
+            options={choferes.map((c) => ({ value: c.id, label: `${c.nombre} (${c.dni})` }))}
+          />
+        </FormSection>
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )

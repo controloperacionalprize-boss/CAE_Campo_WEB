@@ -1,23 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NombreActivoCrud } from './NombreActivoCrud'
 import { Select } from '../ui/Form'
-import { listAllItems } from '../../lib/api'
+import { isAbortError, listAllItems } from '../../lib/api'
 import type { Empresa, Fundo } from '../../types/api'
 
-type Props = { onChanged?: () => void }
+type Props = { onChanged?: () => void; createSignal?: number }
 
-export function GruposCrud({ onChanged }: Props) {
+export function GruposCrud({ onChanged, createSignal }: Props) {
   const [empresas, setEmpresas] = useState<Empresa[]>([])
   const [fundos, setFundos] = useState<Fundo[]>([])
 
   useEffect(() => {
+    const ac = new AbortController()
     void Promise.all([
-      listAllItems<Empresa>('/api/v1/empresas', { incluirInactivos: true }),
-      listAllItems<Fundo>('/api/v1/fundos', { incluirInactivos: true }),
-    ]).then(([e, f]) => {
-      setEmpresas(e)
-      setFundos(f)
-    })
+      listAllItems<Empresa>('/api/v1/empresas', { incluirInactivos: true, signal: ac.signal }),
+      listAllItems<Fundo>('/api/v1/fundos', { incluirInactivos: true, signal: ac.signal }),
+    ])
+      .then(([e, f]) => {
+        setEmpresas(e)
+        setFundos(f)
+      })
+      .catch((err) => {
+        if (isAbortError(err)) return
+      })
+    return () => ac.abort()
   }, [])
 
   const empresaMap = useMemo(() => new Map(empresas.map((e) => [e.id, e.razon_social])), [empresas])
@@ -26,10 +32,11 @@ export function GruposCrud({ onChanged }: Props) {
   return (
     <NombreActivoCrud
       title="Grupos"
-      description="Equipos de trabajo por empresa o fundo."
       singular="grupo"
       path="/api/v1/grupos"
       onChanged={onChanged}
+      embedded
+      createSignal={createSignal}
       extraColumns={[
         {
           header: 'Empresa',

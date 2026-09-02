@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ChevronLeft, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import {
+  Breadcrumbs,
   EmptyState,
   ErrorBanner,
+  InfoBanner,
+  LoadingBlock,
   PageHeader,
-  SkeletonRows,
   StatusPill,
 } from '../components/ui/Feedback'
 import { Tabs } from '../components/ui/Overlay'
-import { EditButton } from '../components/ui/TableActions'
+import { EditButton, RowActionsMenu } from '../components/ui/TableActions'
 import { Table, TableShell, THead, Th, Td, Tr } from '../components/ui/Table'
 import {
   LoteFormDrawer,
@@ -20,7 +22,8 @@ import {
   type ModuloForm,
   type TurnoForm,
 } from '../components/ubicaciones/UbicacionForms'
-import { apiGet } from '../lib/api'
+import { apiGet, isAbortError } from '../lib/api'
+import { useTabParam } from '../hooks/useTabParam'
 import { useToast } from '../context/ToastContext'
 import type { FundoDetalle } from '../types/api'
 
@@ -28,7 +31,7 @@ export function FundoDetallePage() {
   const toast = useToast()
   const { id } = useParams()
   const fundoId = Number(id)
-  const [tab, setTab] = useState('modulos')
+  const [tab, setTab] = useTabParam('modulos', ['modulos', 'turnos', 'lotes', 'grupos'])
   const [data, setData] = useState<FundoDetalle | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -36,22 +39,27 @@ export function FundoDetallePage() {
   const [turnoForm, setTurnoForm] = useState<TurnoForm | null>(null)
   const [loteForm, setLoteForm] = useState<LoteForm | null>(null)
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     if (!Number.isFinite(fundoId)) return
     setLoading(true)
     setError(null)
     try {
-      setData(await apiGet<FundoDetalle>(`/api/v1/fundos/${fundoId}/detalle`))
+      const next = await apiGet<FundoDetalle>(`/api/v1/fundos/${fundoId}/detalle`, undefined, signal)
+      if (signal?.aborted) return
+      setData(next)
     } catch (e) {
+      if (isAbortError(e)) return
       setError(e instanceof Error ? e.message : 'Error al cargar fundo')
       setData(null)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void load()
+    const ac = new AbortController()
+    void load(ac.signal)
+    return () => ac.abort()
   }, [fundoId])
 
   const modulosOpts = useMemo(
@@ -103,11 +111,7 @@ export function FundoDetallePage() {
   }
 
   if (loading) {
-    return (
-      <div>
-        <SkeletonRows rows={8} />
-      </div>
-    )
+    return <LoadingBlock label="Cargando fundo…" />
   }
 
   if (error) {
@@ -130,20 +134,39 @@ export function FundoDetallePage() {
 
   const { fundo, empresa, modulos, turnos, lotes, grupos } = data
 
+  const createAction =
+    tab === 'modulos'
+      ? { label: 'Nuevo módulo', onClick: openNuevoModulo }
+      : tab === 'turnos'
+        ? { label: 'Nuevo turno', onClick: () => openNuevoTurno() }
+        : tab === 'lotes'
+          ? { label: 'Nuevo lote', onClick: () => openNuevoLote() }
+          : null
+
   return (
     <div>
-      <Link
-        to="/ubicaciones"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-olive-900"
-      >
-        <ChevronLeft className="size-4" />
-        Fundos
-      </Link>
-
       <PageHeader
         title={fundo.nombre}
         description={`${empresa.razon_social} · ${fundo.domicilio ?? 'Sin domicilio'}`}
-        actions={<StatusPill activo={fundo.activo} />}
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { label: 'Inicio', to: '/' },
+              { label: 'Fundos', to: '/ubicaciones' },
+              { label: fundo.nombre },
+            ]}
+          />
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill activo={fundo.activo} />
+            {createAction && (
+              <Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
+                {createAction.label}
+              </Button>
+            )}
+          </div>
+        }
       />
 
       <Tabs
@@ -158,12 +181,7 @@ export function FundoDetallePage() {
       />
 
       {tab === 'modulos' && (
-        <section className="space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" leftIcon={<Plus className="size-3.5" />} onClick={openNuevoModulo}>
-              Nuevo módulo
-            </Button>
-          </div>
+        <section>
           {modulos.length === 0 ? (
             <EmptyState
               title="Sin módulos"
@@ -175,11 +193,11 @@ export function FundoDetallePage() {
               }
             />
           ) : (
-            <TableShell>
+            <TableShell stickyHeader>
               <Table>
-                <THead>
+                <THead sticky>
                   <Th>Código</Th>
-                  <Th>Nombre</Th>
+                  <Th className="hidden sm:table-cell">Nombre</Th>
                   <Th>Estado</Th>
                   <Th className="text-right">Acciones</Th>
                 </THead>
@@ -187,35 +205,33 @@ export function FundoDetallePage() {
                   {modulos.map((m) => (
                     <Tr key={m.id}>
                       <Td className="font-medium">{m.codigo}</Td>
-                      <Td>{m.nombre ?? '—'}</Td>
+                      <Td className="hidden sm:table-cell">{m.nombre ?? '—'}</Td>
                       <Td>
                         <StatusPill activo={m.activo} />
                       </Td>
                       <Td className="text-right">
-                        <div className="inline-flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            leftIcon={<Plus className="size-3.5" />}
-                            onClick={() => {
-                              setTab('turnos')
-                              openNuevoTurno(m.id)
-                            }}
-                          >
-                            Turno
-                          </Button>
-                          <EditButton
-                            onClick={() =>
-                              setModuloForm({
-                                id: m.id,
-                                fundoId,
-                                codigo: m.codigo,
-                                nombre: m.nombre ?? '',
-                                activo: m.activo,
-                              })
-                            }
-                          />
-                        </div>
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              label: 'Nuevo turno',
+                              onClick: () => {
+                                setTab('turnos')
+                                openNuevoTurno(m.id)
+                              },
+                            },
+                            {
+                              label: 'Editar',
+                              onClick: () =>
+                                setModuloForm({
+                                  id: m.id,
+                                  fundoId,
+                                  codigo: m.codigo,
+                                  nombre: m.nombre ?? '',
+                                  activo: m.activo,
+                                }),
+                            },
+                          ]}
+                        />
                       </Td>
                     </Tr>
                   ))}
@@ -227,12 +243,7 @@ export function FundoDetallePage() {
       )}
 
       {tab === 'turnos' && (
-        <section className="space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" leftIcon={<Plus className="size-3.5" />} onClick={() => openNuevoTurno()}>
-              Nuevo turno
-            </Button>
-          </div>
+        <section>
           {turnos.length === 0 ? (
             <EmptyState
               title="Sin turnos"
@@ -244,11 +255,11 @@ export function FundoDetallePage() {
               }
             />
           ) : (
-            <TableShell>
+            <TableShell stickyHeader>
               <Table>
-                <THead>
+                <THead sticky>
                   <Th>Código</Th>
-                  <Th>Nombre</Th>
+                  <Th className="hidden sm:table-cell">Nombre</Th>
                   <Th>Módulo</Th>
                   <Th>Estado</Th>
                   <Th className="text-right">Acciones</Th>
@@ -259,36 +270,34 @@ export function FundoDetallePage() {
                     return (
                       <Tr key={t.id}>
                         <Td className="font-medium">{t.codigo}</Td>
-                        <Td>{t.nombre ?? '—'}</Td>
+                        <Td className="hidden sm:table-cell">{t.nombre ?? '—'}</Td>
                         <Td className="text-muted">{mod?.codigo ?? '—'}</Td>
                         <Td>
                           <StatusPill activo={t.activo} />
                         </Td>
                         <Td className="text-right">
-                          <div className="inline-flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              leftIcon={<Plus className="size-3.5" />}
-                              onClick={() => {
-                                setTab('lotes')
-                                openNuevoLote(t.id)
-                              }}
-                            >
-                              Lote
-                            </Button>
-                            <EditButton
-                              onClick={() =>
-                                setTurnoForm({
-                                  id: t.id,
-                                  moduloId: t.modulo_id,
-                                  codigo: t.codigo,
-                                  nombre: t.nombre ?? '',
-                                  activo: t.activo,
-                                })
-                              }
-                            />
-                          </div>
+                          <RowActionsMenu
+                            actions={[
+                              {
+                                label: 'Nuevo lote',
+                                onClick: () => {
+                                  setTab('lotes')
+                                  openNuevoLote(t.id)
+                                },
+                              },
+                              {
+                                label: 'Editar',
+                                onClick: () =>
+                                  setTurnoForm({
+                                    id: t.id,
+                                    moduloId: t.modulo_id,
+                                    codigo: t.codigo,
+                                    nombre: t.nombre ?? '',
+                                    activo: t.activo,
+                                  }),
+                              },
+                            ]}
+                          />
                         </Td>
                       </Tr>
                     )
@@ -301,12 +310,7 @@ export function FundoDetallePage() {
       )}
 
       {tab === 'lotes' && (
-        <section className="space-y-3">
-          <div className="flex justify-end">
-            <Button size="sm" leftIcon={<Plus className="size-3.5" />} onClick={() => openNuevoLote()}>
-              Nuevo lote
-            </Button>
-          </div>
+        <section>
           {lotes.length === 0 ? (
             <EmptyState
               title="Sin lotes"
@@ -362,7 +366,9 @@ export function FundoDetallePage() {
       )}
 
       {tab === 'grupos' && (
-        <TableShell>
+        <>
+          <InfoBanner message="Los grupos se asignan desde la sección Personas. Aquí solo se muestran los vinculados a este fundo." />
+          <TableShell>
           <Table>
             <THead>
               <Th>Nombre</Th>
@@ -387,6 +393,7 @@ export function FundoDetallePage() {
             </tbody>
           </Table>
         </TableShell>
+        </>
       )}
 
       <ModuloFormDrawer

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button } from '../ui/Button'
-import { Input, Select, Switch } from '../ui/Form'
+import { FormActions, Input, Select, Switch } from '../ui/Form'
 import { Drawer } from '../ui/Overlay'
+import { labelCodigo } from '../../lib/ubicacionesLookups'
 import { apiPatch, apiPost } from '../../lib/api'
 import { useToast } from '../../context/ToastContext'
 
@@ -112,14 +112,7 @@ export function FundoFormDrawer({
         <Input label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} error={error} />
         <Input label="Domicilio" value={domicilio} onChange={(e) => setDomicilio(e.target.value)} />
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )
@@ -211,14 +204,7 @@ export function ModuloFormDrawer({
           placeholder="Opcional"
         />
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )
@@ -296,9 +282,7 @@ export function TurnoFormDrawer({
           onChange={(e) => setModuloId(e.target.value)}
           options={modulos.map((m) => ({
             value: m.id,
-            label: m.fundoNombre
-              ? `${m.fundoNombre} · ${m.codigo}${m.nombre ? ` · ${m.nombre}` : ''}`
-              : `${m.codigo}${m.nombre ? ` · ${m.nombre}` : ''}`,
+            label: m.fundoNombre ? `${m.fundoNombre} · ${labelCodigo(m.codigo, m.nombre)}` : labelCodigo(m.codigo, m.nombre),
           }))}
         />
         <Input
@@ -315,14 +299,7 @@ export function TurnoFormDrawer({
           placeholder="Opcional"
         />
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )
@@ -406,8 +383,8 @@ export function LoteFormDrawer({
           options={turnos.map((t) => ({
             value: t.id,
             label: t.moduloCodigo
-              ? `${t.moduloCodigo} · ${t.codigo}${t.nombre ? ` · ${t.nombre}` : ''}`
-              : `${t.codigo}${t.nombre ? ` · ${t.nombre}` : ''}`,
+              ? `${t.moduloCodigo} · ${labelCodigo(t.codigo, t.nombre)}`
+              : labelCodigo(t.codigo, t.nombre),
           }))}
         />
         <Input
@@ -427,14 +404,7 @@ export function LoteFormDrawer({
           placeholder="0.00"
         />
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )

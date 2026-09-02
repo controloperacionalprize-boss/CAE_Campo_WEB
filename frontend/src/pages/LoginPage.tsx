@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Form'
@@ -8,15 +9,13 @@ import { apiGet, ApiError } from '../lib/api'
 import { isValidDni } from '../lib/utils'
 import type { Paginated, Usuario } from '../types/api'
 
-// Login (mock): 1 sola llamada exacta por DNI + incluir_inactivos para
-// distinguir "no existe" de "existe pero inactivo" sin pedir dos veces.
-
 export function LoginPage() {
   const { user, login } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
   const [dni, setDni] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ dni?: string; password?: string }>({})
 
@@ -35,8 +34,6 @@ export function LoginPage() {
 
     setLoading(true)
     try {
-      // Todavía no hay JWT: validamos que el DNI exista en maestros.
-      // GET /api/v1/usuarios?dni=&incluir_inactivos=true — 1 sola llamada.
       const page = await apiGet<Paginated<Usuario>>('/api/v1/usuarios', {
         dni,
         limit: 1,
@@ -72,16 +69,9 @@ export function LoginPage() {
     <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
       <div
         aria-hidden
-        className="absolute inset-0 -z-10"
+        className="absolute inset-0 -z-10 bg-sand-50"
         style={{
-          background: 'linear-gradient(160deg, #f5f5f5 0%, #ffffff 45%, #f0f0f0 100%)',
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 -z-10 h-[42vh]"
-        style={{
-          background:
+          backgroundImage:
             'radial-gradient(ellipse 70% 80% at 50% 0%, rgba(27,58,107,0.1), transparent)',
         }}
       />
@@ -91,12 +81,17 @@ export function LoginPage() {
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-olive-800 text-olive-100 shadow-lg shadow-olive-900/10">
             <svg viewBox="0 0 24 24" className="size-7" fill="none" aria-hidden>
               <path
-                d="M5 17c2.5-5 5-7.5 7-8.5 2 .8 4.5 3.5 7 8.5"
+                d="M12 3.2 20.2 7.6v8.8L12 20.8 3.8 16.4V7.6L12 3.2Z"
                 stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
               />
-              <circle cx="12" cy="9" r="1.6" className="fill-teal-600" />
+              <path
+                d="M3.8 7.6 12 12l8.2-4.4M12 12v8.8"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
             </svg>
           </div>
           <p className="text-xs font-medium tracking-[0.18em] text-teal-800 uppercase">Aquanqa</p>
@@ -106,7 +101,7 @@ export function LoginPage() {
 
         <form
           onSubmit={onSubmit}
-          className="rounded-2xl border border-line bg-sand-0/90 p-6 shadow-sm shadow-olive-950/5 backdrop-blur"
+          className="rounded-2xl border border-line bg-sand-0 p-6 shadow-[var(--shadow-card)]"
         >
           <div className="space-y-4">
             <Input
@@ -118,24 +113,36 @@ export function LoginPage() {
               value={dni}
               onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
               error={errors.dni}
+              required
             />
-            <Input
-              label="Contraseña"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={errors.password}
-            />
+            <div className="relative">
+              <Input
+                label="Contraseña"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                error={errors.password}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute top-[30px] right-3 text-muted hover:text-olive-900"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
-          <Button type="submit" className="mt-6 w-full" disabled={loading}>
-            {loading ? 'Verificando…' : 'Ingresar'}
+          <Button type="submit" className="mt-6 w-full" loading={loading}>
+            Ingresar
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted">Aquanqa</p>
+        <p className="mt-6 text-center text-xs text-muted">Aquanqa · Despacho Campo</p>
       </div>
     </div>
   )

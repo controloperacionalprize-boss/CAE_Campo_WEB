@@ -133,15 +133,38 @@ export type DashboardResumen = {
   vehiculos_muestra: Vehiculo[]
 }
 
-export type DespachoEstado = 'Pendiente' | 'En ruta' | 'Completado'
-
-export type DespachoOrden = {
+export type GuiaIngreso = {
   id: number
   codigo: string
-  fundo_id: number
   fecha: string
-  estado: DespachoEstado
+  hora_envio: string
+  usuario_id: number
+  usuario_dni: string
+  usuario_nombre: string
+  grupo_id: number | null
+  grupo: string
+  fundo_id: number | null
+  fundo: string
+  modulo_id: number
+  modulo: string
+  turno_id: number
+  turno: string
+  lote_id: number
+  lote: string
+  tipo_producto: string
+  tipo_llenado: number | string
+  envase_principal: string
+  jabas_completas: number
+  jabas_incompletas: number
+  jarras_jabas: number
+  jarras_extras: number
+  jabas_totales: number
+  jarras_totales: number
+  ha: number | string
+  observacion: string
+  vehiculo_id: number
   placa: string
-  chofer: string
-  destino: string
+  estado: string
+  created_at: string
+  updated_at: string
 }

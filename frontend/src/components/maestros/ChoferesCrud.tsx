@@ -1,38 +1,39 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { Input, Switch } from '../ui/Form'
+import { FormActions, Input, SearchInput, Switch } from '../ui/Form'
 import {
   EmptyState,
   ErrorBanner,
   FilterBar,
-  PageHeader,
   SkeletonRows,
   StatusPill,
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
 import { EditButton } from '../ui/TableActions'
 import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
-import { apiPatch, apiPost, listPage } from '../../lib/api'
+import { apiPatch, apiPost, isAbortError, listPage } from '../../lib/api'
 import { isValidDni } from '../../lib/utils'
+import { useDebounce } from '../../hooks/useDebounce'
 import { useToast } from '../../context/ToastContext'
 import type { Chofer } from '../../types/api'
 
-type Props = { onChanged?: () => void }
+type Props = { onChanged?: () => void; createSignal?: number }
 
-export function ChoferesCrud({ onChanged }: Props) {
+export function ChoferesCrud({ onChanged, createSignal }: Props) {
   const [items, setItems] = useState<Chofer[]>([])
   const [total, setTotal] = useState(0)
   const [q, setQ] = useState('')
-  const [incluirInactivos, setIncluirInactivos] = useState(true)
+  const debouncedQ = useDebounce(q)
+  const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [skip, setSkip] = useState(0)
+  const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editing, setEditing] = useState<Chofer | null>(null)
-  const limit = 10
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
     try {
@@ -40,46 +41,53 @@ export function ChoferesCrud({ onChanged }: Props) {
         incluirInactivos,
         skip,
         limit,
-        q: q || undefined,
+        q: debouncedQ || undefined,
+        signal,
       })
+      if (signal?.aborted) return
       setItems(page.items)
       setTotal(page.total)
     } catch (e) {
+      if (isAbortError(e)) return
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los choferes')
       setItems([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void load()
-  }, [skip, limit, q, incluirInactivos])
+    const ac = new AbortController()
+    void load(ac.signal)
+    return () => ac.abort()
+  }, [skip, limit, debouncedQ, incluirInactivos])
+
+  function openCreate() {
+    setEditing(null)
+    setDrawerOpen(true)
+  }
+
+  useEffect(() => {
+    if (!createSignal) return
+    openCreate()
+  }, [createSignal])
+
+  const hasActiveFilters = !!q || incluirInactivos
+
+  function clearFilters() {
+    setQ('')
+    setIncluirInactivos(false)
+    setSkip(0)
+  }
 
   return (
     <div>
-      <PageHeader
-        title="Choferes"
-        description="Conductores asociados a la flota."
-        actions={
-          <Button
-            leftIcon={<Plus className="size-4" />}
-            onClick={() => {
-              setEditing(null)
-              setDrawerOpen(true)
-            }}
-          >
-            Nuevo chofer
-          </Button>
-        }
-      />
-
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      <FilterBar>
+      <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters}>
         <div className="min-w-[180px] flex-1">
-          <Input
+          <SearchInput
             label="Búsqueda"
             placeholder="DNI o nombre…"
             value={q}
@@ -104,16 +112,28 @@ export function ChoferesCrud({ onChanged }: Props) {
       {loading ? (
         <SkeletonRows rows={6} />
       ) : total === 0 ? (
-        <EmptyState title="Sin choferes" description="No hay coincidencias." />
+        <EmptyState
+          title="Sin choferes"
+          description={hasActiveFilters ? 'No hay coincidencias.' : 'Aún no hay choferes registrados.'}
+          action={
+            hasActiveFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>Limpiar filtros</Button>
+            ) : (
+              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+                Nuevo chofer
+              </Button>
+            )
+          }
+        />
       ) : (
         <>
-          <TableShell>
+          <TableShell stickyHeader>
             <Table>
-              <THead>
+              <THead sticky>
                 <Th>DNI</Th>
                 <Th>Nombre</Th>
                 <Th>Estado</Th>
-                <Th />
+                <Th className="text-right">Acciones</Th>
               </THead>
               <tbody>
                 {items.map((c) => (
@@ -136,7 +156,13 @@ export function ChoferesCrud({ onChanged }: Props) {
               </tbody>
             </Table>
           </TableShell>
-          <Pagination skip={skip} limit={limit} total={total} onChange={setSkip} />
+          <Pagination
+            skip={skip}
+            limit={limit}
+            total={total}
+            onChange={setSkip}
+            onLimitChange={(n) => { setLimit(n); setSkip(0) }}
+          />
         </>
       )}
 
@@ -223,14 +249,7 @@ function ChoferDrawer({
           error={errors.nombre}
         />
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )

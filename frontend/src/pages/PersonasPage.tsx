@@ -1,18 +1,31 @@
 import { useState } from 'react'
-import { Tabs } from '../components/ui/Overlay'
+import { Plus } from 'lucide-react'
+import { Button } from '../components/ui/Button'
+import { Breadcrumbs, PageHeader } from '../components/ui/Feedback'
 import { Input } from '../components/ui/Form'
 import { NombreActivoCrud, type ExtraColumn, type ExtraField } from '../components/maestros/NombreActivoCrud'
 import { GruposCrud } from '../components/maestros/GruposCrud'
 import { UsuariosPanel } from '../components/maestros/UsuariosPanel'
 import { useLookups } from '../context/LookupsContext'
+import { useTabParam } from '../hooks/useTabParam'
 
-const TABS = [
-  { id: 'usuarios', label: 'Usuarios' },
-  { id: 'grupos', label: 'Grupos' },
-  { id: 'roles', label: 'Roles' },
-  { id: 'cargos', label: 'Cargos' },
-  { id: 'areas', label: 'Áreas' },
-]
+const TAB_IDS = ['usuarios', 'grupos', 'roles', 'cargos', 'areas'] as const
+
+const TAB_LABELS: Record<(typeof TAB_IDS)[number], string> = {
+  usuarios: 'Usuarios',
+  grupos: 'Grupos',
+  roles: 'Roles',
+  cargos: 'Cargos',
+  areas: 'Áreas',
+}
+
+const CREATE_LABELS: Record<(typeof TAB_IDS)[number], string> = {
+  usuarios: 'Nuevo usuario',
+  grupos: 'Nuevo grupo',
+  roles: 'Nuevo rol',
+  cargos: 'Nuevo cargo',
+  areas: 'Nueva área',
+}
 
 const AREAS_EXTRA_COLUMNS: ExtraColumn[] = [
   {
@@ -45,40 +58,62 @@ const AREAS_EXTRA_FIELDS: ExtraField[] = [
 ]
 
 export function PersonasPage() {
-  const [tab, setTab] = useState('usuarios')
+  const [tab] = useTabParam('usuarios', [...TAB_IDS])
   const { refresh } = useLookups()
+  const [createSignal, setCreateSignal] = useState(0)
+  const currentTab = tab as (typeof TAB_IDS)[number]
+  const label = TAB_LABELS[currentTab] ?? 'Personas'
 
   return (
     <div>
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <PageHeader
+        title={label}
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { label: 'Inicio', to: '/' },
+              { label: 'Personas', to: '/personas' },
+              { label },
+            ]}
+          />
+        }
+        actions={
+          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateSignal((n) => n + 1)}>
+            {CREATE_LABELS[currentTab]}
+          </Button>
+        }
+      />
 
-      {tab === 'usuarios' && <UsuariosPanel />}
-      {tab === 'grupos' && <GruposCrud onChanged={refresh} />}
+      {tab === 'usuarios' && <UsuariosPanel createSignal={createSignal} />}
+      {tab === 'grupos' && <GruposCrud onChanged={refresh} createSignal={createSignal} />}
       {tab === 'roles' && (
         <NombreActivoCrud
           title="Roles"
-          description="Permisos de acceso al sistema."
           singular="rol"
           path="/api/v1/roles"
           onChanged={refresh}
+          embedded
+          createSignal={createSignal}
         />
       )}
       {tab === 'cargos' && (
         <NombreActivoCrud
           title="Cargos"
-          description="Puestos laborales del personal."
           singular="cargo"
           path="/api/v1/cargos"
           onChanged={refresh}
+          embedded
+          createSignal={createSignal}
         />
       )}
       {tab === 'areas' && (
         <NombreActivoCrud
           title="Áreas"
-          description="Áreas operativas. Un usuario puede tener un área o ninguna."
           singular="área"
           path="/api/v1/areas"
           onChanged={refresh}
+          embedded
+          createSignal={createSignal}
           extraColumns={AREAS_EXTRA_COLUMNS}
           extraFields={AREAS_EXTRA_FIELDS}
         />

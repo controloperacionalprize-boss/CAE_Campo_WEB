@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { Input, Switch } from '../ui/Form'
+import { FormActions, Input, SearchInput, Switch } from '../ui/Form'
 import {
   EmptyState,
   ErrorBanner,
@@ -12,8 +12,9 @@ import {
 } from '../ui/Feedback'
 import { Drawer } from '../ui/Overlay'
 import { EditButton } from '../ui/TableActions'
-import { Pagination, Table, TableShell, THead, Th, Td, Tr } from '../ui/Table'
-import { apiPatch, apiPost, listPage } from '../../lib/api'
+import { Pagination, Table, TableShell, THead, Th, Td, TdTruncate, Tr } from '../ui/Table'
+import { apiPatch, apiPost, isAbortError, listPage } from '../../lib/api'
+import { useDebounce } from '../../hooks/useDebounce'
 import { useToast } from '../../context/ToastContext'
 
 /** Registro mínimo con nombre + activo (cargos, roles, proveedores, etc.) */
@@ -27,41 +28,35 @@ export type NombreActivoItem = {
 export type ExtraField = {
   key: string
   label: string
-  /** Valor inicial al crear / editar */
   getValue: (item: NombreActivoItem | null) => string
-  /** Render del control */
   render: (value: string, onChange: (v: string) => void) => ReactNode
-  /** Validación opcional */
   validate?: (value: string) => string | null
-  /** Incluir en body POST/PATCH */
   toBody: (value: string) => Record<string, unknown>
-  /** Si es true, el campo va encima de Nombre (p. ej. prefijo de área) */
   beforeNombre?: boolean
 }
 
 export type ExtraColumn = {
   header: string
   render: (item: NombreActivoItem & Record<string, unknown>) => ReactNode
-  /** Si es true, la columna va antes de Nombre */
   beforeNombre?: boolean
+  /** Ocultar en pantallas pequeñas */
+  hideOnMobile?: boolean
 }
 
 type Props = {
   title: string
-  description: string
+  description?: string
   singular: string
   path: string
-  /** Tras crear/editar: refrescar LookupsContext u otros */
   onChanged?: () => void
-  /** Columnas / campos extra además de nombre+activo */
   extraFields?: ExtraField[]
   extraColumns?: ExtraColumn[]
+  /** Sin título propio — para usar dentro de páginas con tabs */
+  embedded?: boolean
+  /** Incrementar para abrir el formulario de creación desde el header de la página */
+  createSignal?: number
 }
 
-/**
- * CRUD reutilizable para maestros simples (nombre + activo [+ extras]).
- * Una sola lista paginada; create/edit vía drawer; 1 request por acción.
- */
 export function NombreActivoCrud({
   title,
   description,
@@ -70,19 +65,30 @@ export function NombreActivoCrud({
   onChanged,
   extraFields = [],
   extraColumns = [],
+  embedded,
+  createSignal,
 }: Props) {
   const [items, setItems] = useState<(NombreActivoItem & Record<string, unknown>)[]>([])
   const [total, setTotal] = useState(0)
   const [q, setQ] = useState('')
-  const [incluirInactivos, setIncluirInactivos] = useState(true)
+  const debouncedQ = useDebounce(q)
+  const [incluirInactivos, setIncluirInactivos] = useState(false)
   const [skip, setSkip] = useState(0)
+  const [limit, setLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editing, setEditing] = useState<(NombreActivoItem & Record<string, unknown>) | null>(null)
-  const limit = 10
 
-  async function load() {
+  const hasActiveFilters = !!q || incluirInactivos
+
+  function clearFilters() {
+    setQ('')
+    setIncluirInactivos(false)
+    setSkip(0)
+  }
+
+  async function load(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
     try {
@@ -90,46 +96,53 @@ export function NombreActivoCrud({
         incluirInactivos,
         skip,
         limit,
-        q: q || undefined,
+        q: debouncedQ || undefined,
+        signal,
       })
+      if (signal?.aborted) return
       setItems(page.items)
       setTotal(page.total)
     } catch (e) {
+      if (isAbortError(e)) return
       setError(e instanceof Error ? e.message : `No se pudo cargar ${title.toLowerCase()}`)
       setItems([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void load()
-  }, [skip, limit, q, incluirInactivos, path])
+    const ac = new AbortController()
+    void load(ac.signal)
+    return () => ac.abort()
+  }, [skip, limit, debouncedQ, incluirInactivos, path])
+
+  function openCreate() {
+    setEditing(null)
+    setDrawerOpen(true)
+  }
+
+  useEffect(() => {
+    if (!createSignal) return
+    openCreate()
+  }, [createSignal])
+
+  const createButton = (
+    <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+      Nuevo {singular}
+    </Button>
+  )
 
   return (
     <div>
-      <PageHeader
-        title={title}
-        description={description}
-        actions={
-          <Button
-            leftIcon={<Plus className="size-4" />}
-            onClick={() => {
-              setEditing(null)
-              setDrawerOpen(true)
-            }}
-          >
-            Nuevo {singular}
-          </Button>
-        }
-      />
+      {!embedded && <PageHeader title={title} description={description} actions={createButton} />}
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      <FilterBar>
+      <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters}>
         <div className="min-w-[180px] flex-1">
-          <Input
+          <SearchInput
             label="Búsqueda"
             placeholder="Nombre…"
             value={q}
@@ -154,25 +167,47 @@ export function NombreActivoCrud({
       {loading ? (
         <SkeletonRows rows={6} />
       ) : total === 0 ? (
-        <EmptyState title={`Sin ${title.toLowerCase()}`} description="No hay coincidencias." />
+        <EmptyState
+          title={`Sin ${title.toLowerCase()}`}
+          description={
+            hasActiveFilters
+              ? 'No hay coincidencias con los filtros actuales.'
+              : `Aún no hay ${title.toLowerCase()} registrados.`
+          }
+          action={
+            hasActiveFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
+            ) : (
+              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+                Nuevo {singular}
+              </Button>
+            )
+          }
+        />
       ) : (
         <>
-          <TableShell>
+          <TableShell stickyHeader>
             <Table>
-              <THead>
+              <THead sticky>
                 {extraColumns
                   .filter((c) => c.beforeNombre)
                   .map((c) => (
-                    <Th key={c.header}>{c.header}</Th>
+                    <Th key={c.header} className={c.hideOnMobile ? 'hidden md:table-cell' : undefined}>
+                      {c.header}
+                    </Th>
                   ))}
                 <Th>Nombre</Th>
                 {extraColumns
                   .filter((c) => !c.beforeNombre)
                   .map((c) => (
-                    <Th key={c.header}>{c.header}</Th>
+                    <Th key={c.header} className={c.hideOnMobile ? 'hidden md:table-cell' : undefined}>
+                      {c.header}
+                    </Th>
                   ))}
                 <Th>Estado</Th>
-                <Th />
+                <Th className="text-right">Acciones</Th>
               </THead>
               <tbody>
                 {items.map((item) => (
@@ -180,13 +215,19 @@ export function NombreActivoCrud({
                     {extraColumns
                       .filter((c) => c.beforeNombre)
                       .map((c) => (
-                        <Td key={c.header}>{c.render(item)}</Td>
+                        <Td key={c.header} className={c.hideOnMobile ? 'hidden md:table-cell' : undefined}>
+                          {c.render(item)}
+                        </Td>
                       ))}
-                    <Td className="font-medium">{item.nombre}</Td>
+                    <TdTruncate className="font-medium" maxWidth="240px">
+                      {item.nombre}
+                    </TdTruncate>
                     {extraColumns
                       .filter((c) => !c.beforeNombre)
                       .map((c) => (
-                        <Td key={c.header}>{c.render(item)}</Td>
+                        <Td key={c.header} className={c.hideOnMobile ? 'hidden md:table-cell' : undefined}>
+                          {c.render(item)}
+                        </Td>
                       ))}
                     <Td>
                       <StatusPill activo={item.activo} />
@@ -204,7 +245,16 @@ export function NombreActivoCrud({
               </tbody>
             </Table>
           </TableShell>
-          <Pagination skip={skip} limit={limit} total={total} onChange={setSkip} />
+          <Pagination
+            skip={skip}
+            limit={limit}
+            total={total}
+            onChange={setSkip}
+            onLimitChange={(n) => {
+              setLimit(n)
+              setSkip(0)
+            }}
+          />
         </>
       )}
 
@@ -258,7 +308,6 @@ function NombreActivoDrawer({
     for (const f of extraFields) init[f.key] = f.getValue(item)
     setExtras(init)
     setErrors({})
-    // extraFields es estable por pantalla; no incluirlo para evitar reset al tipear
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item])
 
@@ -311,6 +360,7 @@ function NombreActivoDrawer({
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           error={errors.nombre}
+          required
         />
         {extraFields
           .filter((f) => !f.beforeNombre)
@@ -321,14 +371,7 @@ function NombreActivoDrawer({
             </div>
           ))}
         <Switch checked={activo} onChange={setActivo} label="Activo" />
-        <div className="flex gap-2 pt-2">
-          <Button type="submit" className="flex-1" disabled={saving}>
-            {saving ? 'Guardando…' : 'Guardar'}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-        </div>
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Drawer>
   )
