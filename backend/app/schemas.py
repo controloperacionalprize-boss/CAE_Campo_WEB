@@ -566,3 +566,276 @@ class GuiaContextoOut(BaseModel):
     vehiculo_id: int | None = None
     lote_id: int | None = None
 
+
+TIPOS_VIAJE = ("directo", "agrupado")
+ESTADOS_VIAJE = ("en_proceso", "finalizado", "anulado")
+
+
+def _tipo_viaje_ok(v: object) -> str:
+    if not isinstance(v, str):
+        raise ValueError("El tipo de viaje debe ser directo o agrupado")
+    cleaned = v.strip().lower()
+    if cleaned not in TIPOS_VIAJE:
+        raise ValueError("El tipo de viaje debe ser directo o agrupado")
+    return cleaned
+
+
+def _estado_viaje_ok(v: object) -> str:
+    if not isinstance(v, str):
+        raise ValueError("El estado del viaje debe ser en_proceso, finalizado o anulado")
+    cleaned = v.strip().lower()
+    if cleaned not in ESTADOS_VIAJE:
+        raise ValueError("El estado del viaje debe ser en_proceso, finalizado o anulado")
+    return cleaned
+
+
+class ViajeOut(ORMModel):
+    id: int
+    codigo: str
+    tipo_viaje: str
+    conductor_id: int | None
+    conductor_nombre: str
+    vehiculo_id: int | None
+    placa: str
+    kia_origen: str
+    kia_destino: str
+    observacion: str
+    estado: str
+    usuario_id: int | None
+    fecha: date
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ViajeIn(BaseModel):
+    tipo_viaje: str
+    conductor_id: int | None = None
+    vehiculo_id: int | None = None
+    placa: str = Field(default="", max_length=15)
+    kia_origen: str = Field(min_length=1, max_length=80)
+    kia_destino: str = Field(min_length=1, max_length=80)
+    observacion: str = Field(default="", max_length=4000)
+    usuario_id: int
+
+    @field_validator("tipo_viaje", mode="before")
+    @classmethod
+    def tipo_ok(cls, v: object) -> str:
+        return _tipo_viaje_ok(v)
+
+    @field_validator("placa", "kia_origen", "kia_destino", "observacion", mode="before")
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("placa")
+    @classmethod
+    def placa_mayus(cls, v: str) -> str:
+        return v.upper()
+
+
+class ViajePatch(BaseModel):
+    estado: str
+
+    @field_validator("estado", mode="before")
+    @classmethod
+    def estado_ok(cls, v: object) -> str:
+        return _estado_viaje_ok(v)
+
+
+class ViajeDetalleOut(ORMModel):
+    id: int
+    viaje_id: int
+    guia_ingreso_id: int
+    modulo: str
+    turno: str
+    lote: str
+    jabas_completas: int
+    jabas_incompletas: int
+    jarras: int
+    created_at: datetime
+
+
+class ViajeDetalleIn(BaseModel):
+    guia_ingreso_ids: list[int] = Field(min_length=1)
+
+    @field_validator("guia_ingreso_ids")
+    @classmethod
+    def ids_positivos(cls, v: list[int]) -> list[int]:
+        if any(i < 1 for i in v):
+            raise ValueError("Cada guía de ingreso debe ser un identificador positivo")
+        return v
+
+
+class ViajeDetalleListOut(BaseModel):
+    items: list[ViajeDetalleOut]
+    total_jarras: int
+    total_jabas: int
+    total_qrs: int
+
+
+class CroquisContinuacionIn(BaseModel):
+    modulo: str = Field(min_length=1, max_length=20)
+    turno: str = Field(min_length=1, max_length=20)
+    variedad: str = Field(default="", max_length=80)
+    jarras: int = Field(default=0, ge=0)
+    jabas: int = Field(default=0, ge=0)
+
+    @field_validator("modulo", "turno", "variedad", mode="before")
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("modulo", "turno", "variedad")
+    @classmethod
+    def mayusculas(cls, v: str) -> str:
+        return v.upper()
+
+
+class CroquisPalletIn(BaseModel):
+    nombre: str = Field(min_length=1, max_length=30)
+    orden: int = Field(default=0, ge=0)
+    modulo: str = Field(min_length=1, max_length=20)
+    turno: str = Field(min_length=1, max_length=20)
+    variedad: str = Field(default="", max_length=80)
+    jarras: int = Field(default=0, ge=0)
+    jabas: int = Field(default=0, ge=0)
+    continuaciones: list[CroquisContinuacionIn] = Field(default_factory=list)
+
+    @field_validator("nombre", "modulo", "turno", "variedad", mode="before")
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("nombre", "modulo", "turno", "variedad")
+    @classmethod
+    def mayusculas(cls, v: str) -> str:
+        return v.upper()
+
+
+class CroquisIn(BaseModel):
+    fecha: date
+    placa: str = Field(min_length=1, max_length=15)
+    punto_partida: str = Field(min_length=1, max_length=120)
+    punto_llegada: str = Field(min_length=1, max_length=120)
+    motivo_traslado: str = Field(default="Traslado de fruta", max_length=200)
+    hora_salida: time
+    temperatura: Decimal | None = None
+    pallets: list[CroquisPalletIn] = Field(min_length=1)
+
+    @field_validator("hora_salida", mode="before")
+    @classmethod
+    def parse_hora(cls, v: object) -> time:
+        return _hora_hhmm(v)
+
+    @field_validator("placa", "punto_partida", "punto_llegada", "motivo_traslado", mode="before")
+    @classmethod
+    def strip_text(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("placa")
+    @classmethod
+    def placa_mayus(cls, v: str) -> str:
+        return v.upper()
+
+
+class CroquisLineaOut(ORMModel):
+    id: int
+    croquis_id: int
+    nombre: str
+    orden: int
+    modulo: str
+    turno: str
+    variedad: str
+    jarras: int
+    jabas: int
+    es_continuacion: bool
+    pallet_padre_id: int | None
+    created_at: datetime
+
+
+class CroquisPalletOut(CroquisLineaOut):
+    continuaciones: list[CroquisLineaOut] = Field(default_factory=list)
+
+
+class CroquisOut(ORMModel):
+    id: int
+    viaje_id: int
+    fecha: date
+    placa: str
+    punto_partida: str
+    punto_llegada: str
+    motivo_traslado: str
+    hora_salida: time
+    total_jarras: int
+    total_jabas: int
+    total_pallets: int
+    temperatura: Decimal | None
+    created_at: datetime
+    updated_at: datetime
+    pallets: list[CroquisPalletOut] = Field(default_factory=list)
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+    @field_serializer("hora_salida")
+    def _hora(self, v: time) -> str:
+        return v.strftime("%H:%M")
+
+    @field_serializer("temperatura")
+    def _temp(self, v: Decimal | None) -> float | None:
+        return float(v) if v is not None else None
+
+
+class GrrDetalleOut(ORMModel):
+    id: int
+    grr_id: int
+    pallet: str
+    modulo: str
+    turno: str
+    variedad: str
+    jarras: int
+    jabas: int
+    orden: int
+    created_at: datetime
+
+
+class GrrOut(ORMModel):
+    id: int
+    viaje_id: int
+    numero: str
+    fecha_emision: date
+    remitente: str
+    destinatario: str
+    motivo_traslado: str
+    placa: str
+    punto_partida: str
+    punto_llegada: str
+    total_jarras: int
+    total_jabas: int
+    estado: str
+    created_at: datetime
+    updated_at: datetime
+    detalle_carga: list[GrrDetalleOut] = Field(default_factory=list)
+
+    @field_serializer("fecha_emision")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ViajeCompletoOut(ViajeOut):
+    detalle: list[ViajeDetalleOut] = Field(default_factory=list)
+    croquis: CroquisOut | None = None
+    grr: GrrOut | None = None

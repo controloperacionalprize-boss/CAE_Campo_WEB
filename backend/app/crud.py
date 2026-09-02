@@ -22,6 +22,12 @@ ALLOWED_TABLES = {
     "usuario",
     "vehiculo",
     "guia_ingreso",
+    "viaje",
+    "viaje_detalle",
+    "croquis",
+    "croquis_pallet",
+    "grr",
+    "grr_detalle",
 }
 
 ALLOWED_COLUMNS = {
@@ -147,6 +153,94 @@ ALLOWED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "viaje": {
+        "id",
+        "codigo",
+        "tipo_viaje",
+        "conductor_id",
+        "conductor_nombre",
+        "vehiculo_id",
+        "placa",
+        "kia_origen",
+        "kia_destino",
+        "observacion",
+        "estado",
+        "usuario_id",
+        "fecha",
+        "created_at",
+        "updated_at",
+    },
+    "viaje_detalle": {
+        "id",
+        "viaje_id",
+        "guia_ingreso_id",
+        "modulo",
+        "turno",
+        "lote",
+        "jabas_completas",
+        "jabas_incompletas",
+        "jarras",
+        "created_at",
+    },
+    "croquis": {
+        "id",
+        "viaje_id",
+        "fecha",
+        "placa",
+        "punto_partida",
+        "punto_llegada",
+        "motivo_traslado",
+        "hora_salida",
+        "total_jarras",
+        "total_jabas",
+        "total_pallets",
+        "temperatura",
+        "created_at",
+        "updated_at",
+    },
+    "croquis_pallet": {
+        "id",
+        "croquis_id",
+        "nombre",
+        "orden",
+        "modulo",
+        "turno",
+        "variedad",
+        "jarras",
+        "jabas",
+        "es_continuacion",
+        "pallet_padre_id",
+        "created_at",
+    },
+    "grr": {
+        "id",
+        "viaje_id",
+        "numero",
+        "fecha_emision",
+        "remitente",
+        "destinatario",
+        "motivo_traslado",
+        "placa",
+        "punto_partida",
+        "punto_llegada",
+        "total_jarras",
+        "total_jabas",
+        "estado",
+        "created_at",
+        "updated_at",
+    },
+    "grr_detalle": {
+        "id",
+        "grr_id",
+        "pallet",
+        "modulo",
+        "turno",
+        "variedad",
+        "jarras",
+        "jabas",
+        "orden",
+        "created_at",
+    },
 }
 
 SEARCH_COLUMNS = {
@@ -165,6 +259,7 @@ SEARCH_COLUMNS = {
     "usuario": ("dni", "nombre"),
     "vehiculo": ("placa",),
     "guia_ingreso": ("codigo", "usuario_dni", "usuario_nombre", "fundo", "placa", "lote"),
+    "viaje": ("codigo", "placa", "conductor_nombre", "kia_origen", "kia_destino"),
 }
 
 
@@ -192,13 +287,20 @@ def _raise_db(exc: Exception) -> None:
         raise HTTPException(status_code=409, detail=fk_message(exc)) from None
     if code == errorcodes.CHECK_VIOLATION:
         text = f"{getattr(exc, 'pgerror', '') or ''} {getattr(getattr(exc, 'diag', None), 'constraint_name', '') or ''}".lower()
-        detail = (
-            "El prefijo debe ir en mayúsculas, sin espacios"
-            if "prefijo" in text
-            else "El estado debe ser registrado o anulado"
-            if "estado" in text
-            else "Los datos no cumplen una regla del sistema"
-        )
+        if "prefijo" in text:
+            detail = "El prefijo debe ir en mayúsculas, sin espacios"
+        elif "tipo_viaje" in text:
+            detail = "El tipo de viaje debe ser directo o agrupado"
+        elif "guia_ingreso" in text and "estado" in text:
+            detail = "El estado debe ser registrado o anulado"
+        elif "viaje" in text and "estado" in text:
+            detail = "El estado del viaje debe ser en_proceso, finalizado o anulado"
+        elif "grr" in text and "estado" in text:
+            detail = "El estado de la GRR debe ser emitido o anulado"
+        elif "estado" in text:
+            detail = "El estado no es un valor permitido"
+        else:
+            detail = "Los datos no cumplen una regla del sistema"
         raise HTTPException(status_code=400, detail=detail) from None
     if isinstance(exc, IntegrityError):
         raise HTTPException(status_code=409, detail=integrity_message()) from None

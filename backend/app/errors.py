@@ -59,6 +59,32 @@ FIELD_LABELS: dict[str, str] = {
     "modulo": "módulo",
     "turno": "turno",
     "lote": "lote",
+    "tipo_viaje": "tipo de viaje",
+    "conductor_id": "conductor",
+    "conductor_nombre": "nombre del conductor",
+    "kia_origen": "KIA origen",
+    "kia_destino": "KIA destino",
+    "viaje_id": "viaje",
+    "guia_ingreso_id": "guía de ingreso",
+    "guia_ingreso_ids": "guías de ingreso",
+    "hora_salida": "hora de salida",
+    "temperatura": "temperatura",
+    "motivo_traslado": "motivo de traslado",
+    "punto_partida": "punto de partida",
+    "punto_llegada": "punto de llegada",
+    "pallets": "pallets",
+    "continuaciones": "continuaciones",
+    "variedad": "variedad",
+    "jarras": "jarras",
+    "jabas": "jabas",
+    "orden": "orden",
+    "fecha_emision": "fecha de emisión",
+    "remitente": "remitente",
+    "destinatario": "destinatario",
+    "numero": "número",
+    "croquis_id": "croquis",
+    "grr_id": "GRR",
+    "pallet_padre_id": "pallet padre",
 }
 
 TABLE_LABELS: dict[str, str] = {
@@ -77,6 +103,12 @@ TABLE_LABELS: dict[str, str] = {
     "usuario": "usuario",
     "vehiculo": "vehículo",
     "guia_ingreso": "guía de ingreso",
+    "viaje": "viaje",
+    "viaje_detalle": "detalle de viaje",
+    "croquis": "croquis",
+    "croquis_pallet": "pallet del croquis",
+    "grr": "GRR",
+    "grr_detalle": "detalle de GRR",
 }
 
 UNIQUE_BY_COLUMN: dict[str, str] = {
@@ -86,6 +118,8 @@ UNIQUE_BY_COLUMN: dict[str, str] = {
     "placa": "Ya existe un vehículo con esa placa.",
     "prefijo": "Ya existe un área con ese prefijo.",
     "ruc": "Ya existe una empresa con ese RUC.",
+    "numero": "Ya existe una GRR con ese número.",
+    "viaje_id": "Este viaje ya tiene un registro asociado.",
 }
 
 FK_BY_COLUMN: dict[str, str] = {
@@ -103,6 +137,12 @@ FK_BY_COLUMN: dict[str, str] = {
     "lote_id": "El lote indicado no existe",
     "usuario_id": "El usuario indicado no existe",
     "vehiculo_id": "El vehículo indicado no existe",
+    "conductor_id": "El chofer indicado no existe",
+    "viaje_id": "El viaje indicado no existe",
+    "guia_ingreso_id": "La guía de ingreso indicada no existe",
+    "croquis_id": "El croquis indicado no existe",
+    "pallet_padre_id": "El pallet padre indicado no existe",
+    "grr_id": "La GRR indicada no existe",
 }
 
 _HTTP_DEFAULTS: dict[int, str] = {
@@ -142,6 +182,12 @@ _NOT_FOUND: dict[str, str] = {
     "usuario": "No se encontró el usuario",
     "vehiculo": "No se encontró el vehículo",
     "guia_ingreso": "No se encontró la guía de ingreso",
+    "viaje": "No se encontró el viaje",
+    "viaje_detalle": "No se encontró el detalle del viaje",
+    "croquis": "No se encontró el croquis",
+    "croquis_pallet": "No se encontró el pallet del croquis",
+    "grr": "No se encontró la GRR",
+    "grr_detalle": "No se encontró el detalle de la GRR",
 }
 
 
