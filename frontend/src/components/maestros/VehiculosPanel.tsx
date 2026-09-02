@@ -19,7 +19,10 @@ import { useLookups } from '../../context/LookupsContext'
 import type { Chofer, Proveedor, Vehiculo } from '../../types/api'
 
 export function VehiculosPanel({ createSignal }: { createSignal?: number }) {
-  const { proveedores, choferes, loading: lookupsLoading, error: lookupsError } = useLookups()
+  const { proveedores, choferes, loading: lookupsLoading, error: lookupsError } = useLookups([
+    'proveedores',
+    'choferes',
+  ])
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([])
   const [total, setTotal] = useState(0)
   const [proveedorId, setProveedorId] = useState('')

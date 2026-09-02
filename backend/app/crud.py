@@ -361,6 +361,24 @@ def _where_clause(
     return where_sql, params
 
 
+def distinct_columns(
+    cur,
+    table: str,
+    columns: list[str],
+    *,
+    filters: dict[str, Any] | None = None,
+    q: str | None = None,
+) -> list[dict]:
+    _check_table(table)
+    _check_columns(table, columns)
+    where_sql, params = _where_clause(table, filters, q)
+    cur.execute(
+        f"SELECT DISTINCT {', '.join(columns)} FROM {table} {where_sql}",
+        params,
+    )
+    return list(cur.fetchall())
+
+
 def count_rows(
     cur,
     table: str,

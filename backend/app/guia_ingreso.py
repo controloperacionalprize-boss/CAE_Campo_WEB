@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException
 
 from . import schemas as S
-from .crud import get_row, insert_row, list_rows, update_row
+from .crud import distinct_columns, get_row, insert_row, list_rows, update_row
 
 
 def serialize_guia(row: dict) -> dict:
@@ -461,5 +461,204 @@ def recepcionar_planta(cur, item_id: int) -> dict:
     if not row:
         raise HTTPException(status_code=409, detail="Ya fue registrada en planta")
     return serialize_guia(dict(row))
+
+
+def _as_int(value: object) -> int:
+    return int(value or 0)
+
+
+def _uniq(values: list[object]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    out.sort(key=lambda s: s.lower())
+    return out
+
+
+def _kpis_fecha(cur, fecha: date) -> dict:
+    cur.execute(
+        """
+        SELECT
+          COUNT(*) FILTER (WHERE LOWER(estado) <> 'anulado') AS n,
+          COALESCE(SUM(jabas_totales) FILTER (WHERE LOWER(estado) <> 'anulado'), 0) AS jabas,
+          COALESCE(SUM(jarras_totales) FILTER (WHERE LOWER(estado) <> 'anulado'), 0) AS jarras
+        FROM guia_ingreso
+        WHERE fecha = %s
+        """,
+        (fecha,),
+    )
+    row = cur.fetchone() or {}
+    return {
+        "count": _as_int(row.get("n")),
+        "jabas": _as_int(row.get("jabas")),
+        "jarras": _as_int(row.get("jarras")),
+    }
+
+
+def _agrupar_top(cur, fecha: date, columna: str, take: int) -> list[dict]:
+    if columna not in {"fundo", "turno", "modulo"}:
+        raise ValueError(f"Columna no permitida: {columna}")
+    cur.execute(
+        f"""
+        SELECT COALESCE(NULLIF(TRIM({columna}), ''), '—') AS label,
+               COUNT(*) AS n,
+               COALESCE(SUM(jarras_totales), 0) AS jarras
+        FROM guia_ingreso
+        WHERE fecha = %s AND LOWER(estado) <> 'anulado'
+        GROUP BY 1
+        ORDER BY n DESC
+        """,
+        (fecha,),
+    )
+    rows = [
+        {"label": str(r["label"]), "count": _as_int(r["n"]), "jarras": _as_int(r["jarras"])}
+        for r in cur.fetchall()
+    ]
+    head = rows[:take]
+    rest = rows[take:]
+    if rest:
+        head.append(
+            {
+                "label": "Otros",
+                "count": sum(r["count"] for r in rest),
+                "jarras": sum(r["jarras"] for r in rest),
+            }
+        )
+    total = sum(r["count"] for r in rows) or 1
+    for item in head:
+        item["pct"] = round(item["count"] * 100 / total)
+    return head
+
+
+def resumen_dashboard(cur, fecha: date) -> dict:
+    """KPIs de despacho + muestra corta. Una conexión, sin bajar el día entero."""
+    ayer = fecha - timedelta(days=1)
+    recientes, _ = list_rows(
+        cur,
+        "guia_ingreso",
+        filters={"fecha": fecha},
+        skip=0,
+        limit=5,
+        order="hora_envio",
+        descending=True,
+        with_count=False,
+    )
+    cur.execute(
+        """
+        SELECT
+          COUNT(*) FILTER (WHERE activo) AS activos,
+          COUNT(*) AS total
+        FROM vehiculo
+        """
+    )
+    veh = cur.fetchone() or {}
+    muestra, _ = list_rows(
+        cur,
+        "vehiculo",
+        filters={"activo": True},
+        skip=0,
+        limit=6,
+        order="placa",
+        with_count=False,
+    )
+    return {
+        "fecha": fecha,
+        "hoy": _kpis_fecha(cur, fecha),
+        "ayer": _kpis_fecha(cur, ayer),
+        "recientes": [serialize_guia(r) for r in recientes],
+        "por_fundo": _agrupar_top(cur, fecha, "fundo", 5),
+        "por_turno": _agrupar_top(cur, fecha, "turno", 3),
+        "por_modulo": _agrupar_top(cur, fecha, "modulo", 3),
+        "vehiculos_activos": _as_int(veh.get("activos")),
+        "vehiculos_total": _as_int(veh.get("total")),
+        "vehiculos_muestra": muestra,
+    }
+
+
+def _facets_from_rows(
+    rows: list[dict],
+    *,
+    fundo: str | None,
+    modulo: str | None,
+    turno: str | None,
+) -> dict:
+    def col(name: str) -> list[object]:
+        return [r.get(name) for r in rows]
+
+    scoped_fundo = [
+        r for r in rows if not fundo or str(r.get("fundo") or "").strip() == fundo
+    ]
+    scoped_modulo = [
+        r
+        for r in scoped_fundo
+        if not modulo or str(r.get("modulo") or "").strip() == modulo
+    ]
+    scoped_turno = [
+        r
+        for r in scoped_modulo
+        if not turno or str(r.get("turno") or "").strip() == turno
+    ]
+    return {
+        "fundos": _uniq(col("fundo")),
+        "modulos": _uniq([r.get("modulo") for r in scoped_fundo]),
+        "turnos": _uniq([r.get("turno") for r in scoped_modulo]),
+        "lotes": _uniq([r.get("lote") for r in scoped_turno]),
+        "grupos": _uniq(col("grupo")),
+        "tipos_producto": _uniq(col("tipo_producto")),
+    }
+
+
+def listar_guias(
+    cur,
+    *,
+    filters: dict,
+    q: str | None,
+    skip: int,
+    limit: int,
+) -> dict:
+    rows, total = list_rows(
+        cur,
+        "guia_ingreso",
+        filters=filters,
+        q=q,
+        skip=skip,
+        limit=limit,
+        order="codigo",
+        descending=True,
+    )
+    facet_filters = {
+        k: filters[k]
+        for k in (
+            "fecha",
+            "estado",
+            "recepcionado_acopio",
+            "recepcionado_planta",
+        )
+        if filters.get(k) is not None
+    }
+    distinct = distinct_columns(
+        cur,
+        "guia_ingreso",
+        ["fundo", "modulo", "turno", "lote", "grupo", "tipo_producto"],
+        filters=facet_filters,
+        q=q,
+    )
+    return {
+        "items": [serialize_guia(r) for r in rows],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "facets": _facets_from_rows(
+            distinct,
+            fundo=filters.get("fundo"),
+            modulo=filters.get("modulo"),
+            turno=filters.get("turno"),
+        ),
+    }
 
 

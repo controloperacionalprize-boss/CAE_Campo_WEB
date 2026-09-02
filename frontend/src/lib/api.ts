@@ -29,7 +29,7 @@ export function apiHeaders(withJsonBody = false): HeadersInit {
   return headers
 }
 
-type ParamValue = string | number | boolean | null | undefined
+type ParamValue = string | number | boolean | null | undefined | Array<string | number>
 
 function buildUrl(path: string, params?: Record<string, ParamValue>) {
   const base = API_BASE || window.location.origin
@@ -37,6 +37,10 @@ function buildUrl(path: string, params?: Record<string, ParamValue>) {
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v === undefined || v === null || v === '') return
+      if (Array.isArray(v)) {
+        v.forEach((item) => url.searchParams.append(k, String(item)))
+        return
+      }
       url.searchParams.set(k, String(v))
     })
   }
@@ -150,7 +154,7 @@ export async function listPage<T>(
     limit?: number
     q?: string
     signal?: AbortSignal
-    [key: string]: ParamValue | AbortSignal | undefined
+    [key: string]: ParamValue | AbortSignal | undefined | Array<string | number>
   } = {},
 ): Promise<Paginated<T>> {
   const { incluirInactivos = false, skip = 0, limit = 100, signal, ...rest } = opts

@@ -23,7 +23,7 @@ import {
   type ModuloForm,
   type TurnoForm,
 } from '../components/ubicaciones/UbicacionForms'
-import { apiGet, isAbortError, listAllItems, listPage } from '../lib/api'
+import { apiGet, isAbortError, listPage } from '../lib/api'
 import { buildTurnoContextMap, eligibleTurnoIds, labelCodigo, labelCodigoTitle, type TurnoContext } from '../lib/ubicacionesLookups'
 import { paginate } from '../lib/utils'
 import { useDebounce } from '../hooks/useDebounce'
@@ -147,11 +147,21 @@ export function UbicacionesPage() {
       const params = {
         incluirInactivos: !soloActivos,
         q: debouncedQ || undefined,
-        turno_id: turnoId || undefined,
         signal,
       }
 
-      if (turnoId || !parentFilter) {
+      if (turnoId) {
+        const page = await listPage<Lote>('/api/v1/lotes', { ...params, turno_id: turnoId, skip, limit })
+        if (signal?.aborted) return
+        const rows: LoteRow[] = page.items
+          .map((l) => {
+            const ctx = turnoContextMap.get(l.turno_id)
+            return ctx ? { ...l, ctx } : null
+          })
+          .filter((r): r is LoteRow => r != null)
+        setLotes(rows)
+        setLotesTotal(page.total)
+      } else if (!parentFilter) {
         const page = await listPage<Lote>('/api/v1/lotes', { ...params, skip, limit })
         if (signal?.aborted) return
         const rows: LoteRow[] = page.items
@@ -163,25 +173,26 @@ export function UbicacionesPage() {
         setLotes(rows)
         setLotesTotal(page.total)
       } else {
-        const allowed = new Set(
-          eligibleTurnoIds(arbol, { empresaId, fundoId, moduloId, turnoId }),
-        )
-        const all = await listAllItems<Lote>('/api/v1/lotes', {
-          incluirInactivos: !soloActivos,
-          q: debouncedQ || undefined,
-          limit: 500,
-          signal,
+        const allowed = eligibleTurnoIds(arbol, { empresaId, fundoId, moduloId, turnoId })
+        if (!allowed.length) {
+          setLotes([])
+          setLotesTotal(0)
+          return
+        }
+        const page = await listPage<Lote>('/api/v1/lotes', {
+          ...params,
+          turno_ids: allowed,
+          skip,
+          limit,
         })
         if (signal?.aborted) return
-        const filtered = all
-          .filter((l) => allowed.has(l.turno_id))
+        const rows: LoteRow[] = page.items
           .map((l) => {
             const ctx = turnoContextMap.get(l.turno_id)
             return ctx ? { ...l, ctx } : null
           })
           .filter((r): r is LoteRow => r != null)
-        const page = paginate(filtered, skip, limit)
-        setLotes(page.items)
+        setLotes(rows)
         setLotesTotal(page.total)
       }
     } catch (e) {

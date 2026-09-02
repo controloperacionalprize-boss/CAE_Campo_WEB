@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -13,13 +13,12 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useOnGuiaLive } from '../context/LiveEventsContext'
-import { applyGuiaForFecha, overlayKnownGuias, pruneKnownGuias } from '../lib/guiaLive'
-import { listAllItems, listPage, isAbortError } from '../lib/api'
+import { apiGet, isAbortError } from '../lib/api'
 import { cn, formatFechaLarga } from '../lib/utils'
 import { Button } from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
 import { EstadoDespacho, ErrorBanner } from '../components/ui/Feedback'
-import type { GuiaIngreso, Vehiculo } from '../types/api'
+import type { DashboardResumen } from '../types/api'
 
 function toIsoDate(d = new Date()) {
   const y = d.getFullYear()
@@ -53,41 +52,6 @@ function saludo() {
 function pctChange(today: number, yesterday: number) {
   if (yesterday <= 0) return today > 0 ? 100 : null
   return Math.round(((today - yesterday) / yesterday) * 100)
-}
-
-function sumGuias(items: GuiaIngreso[]) {
-  const vigentes = items.filter((g) => g.estado.toLowerCase() !== 'anulado')
-  return {
-    count: vigentes.length,
-    jabas: vigentes.reduce((s, g) => s + (g.jabas_totales ?? 0), 0),
-    jarras: vigentes.reduce((s, g) => s + (g.jarras_totales ?? 0), 0),
-  }
-}
-
-function topCounts(items: GuiaIngreso[], key: 'fundo' | 'turno' | 'modulo', take = 3) {
-  const map = new Map<string, { count: number; jarras: number }>()
-  for (const g of items) {
-    if (g.estado.toLowerCase() === 'anulado') continue
-    const label = (g[key] || '—').trim() || '—'
-    const cur = map.get(label) ?? { count: 0, jarras: 0 }
-    cur.count += 1
-    cur.jarras += g.jarras_totales ?? 0
-    map.set(label, cur)
-  }
-  const sorted = [...map.entries()].sort((a, b) => b[1].count - a[1].count)
-  const head = sorted.slice(0, take)
-  const rest = sorted.slice(take)
-  if (rest.length) {
-    head.push([
-      'Otros',
-      rest.reduce((s, [, v]) => ({ count: s.count + v.count, jarras: s.jarras + v.jarras }), {
-        count: 0,
-        jarras: 0,
-      }),
-    ])
-  }
-  const total = sorted.reduce((s, [, v]) => s + v.count, 0) || 1
-  return { rows: head.map(([label, v]) => ({ label, ...v, pct: Math.round((v.count / total) * 100) })) }
 }
 
 const DONUT_COLORS = ['#0066cc', '#1b3a6b', '#5a85b8', '#dde3eb']
@@ -159,70 +123,58 @@ export function InicioPage() {
   const first = user?.nombre?.split(' ')[0] ?? 'equipo'
   const todayIso = toIsoDate()
   const [fecha, setFecha] = useState(todayIso)
-  const [guias, setGuias] = useState<GuiaIngreso[]>([])
-  const [ayer, setAyer] = useState<GuiaIngreso[]>([])
-  const [vehiculos, setVehiculos] = useState<Vehiculo[]>([])
+  const [resumen, setResumen] = useState<DashboardResumen | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [reloadTick, setReloadTick] = useState(0)
   const fechaRef = useRef(fecha)
   fechaRef.current = fecha
-  const knownRef = useRef(new Map<number, GuiaIngreso>())
+  const loadSilentRef = useRef<(signal?: AbortSignal) => Promise<void>>(async () => {})
 
   useEffect(() => {
     const ac = new AbortController()
-    setLoading(true)
-    setError(null)
-    const prev = addDays(fecha, -1)
-    Promise.all([
-      listPage<GuiaIngreso>('/api/v1/guias-ingreso', { fecha, skip: 0, limit: 500, signal: ac.signal }),
-      listPage<GuiaIngreso>('/api/v1/guias-ingreso', { fecha: prev, skip: 0, limit: 500, signal: ac.signal }),
-    ])
-      .then(([hoyPage, ayerPage]) => {
-        const known = knownRef.current
-        setGuias(overlayKnownGuias(hoyPage.items, known.values(), (list, g) => applyGuiaForFecha(list, g, fecha)))
-        setAyer(overlayKnownGuias(ayerPage.items, known.values(), (list, g) => applyGuiaForFecha(list, g, prev)))
-        pruneKnownGuias([...hoyPage.items, ...ayerPage.items], known)
-      })
-      .catch((e) => {
+    async function load(signal: AbortSignal, silent = false) {
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        const data = await apiGet<DashboardResumen>(
+          '/api/v1/dashboard/resumen',
+          { fecha },
+          signal,
+        )
+        if (signal.aborted || fecha !== fechaRef.current) return
+        setResumen(data)
+      } catch (e) {
         if (isAbortError(e)) return
         setError(e instanceof Error ? e.message : 'No se pudo cargar el inicio')
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setLoading(false)
-      })
+      } finally {
+        if (!signal.aborted && !silent) setLoading(false)
+      }
+    }
+    loadSilentRef.current = (signal) => load(signal ?? new AbortController().signal, true)
+    void load(ac.signal)
     return () => ac.abort()
   }, [fecha, reloadTick])
 
   useOnGuiaLive((event) => {
     const g = event.guia
-    knownRef.current.set(g.id, g)
     const f = fechaRef.current
-    setGuias((list) => applyGuiaForFecha(list, g, f))
-    setAyer((list) => applyGuiaForFecha(list, g, addDays(f, -1)))
+    if (g.fecha === f || g.fecha === addDays(f, -1)) {
+      void loadSilentRef.current()
+    }
   })
 
-  useEffect(() => {
-    const ac = new AbortController()
-    listAllItems<Vehiculo>('/api/v1/vehiculos', { incluirInactivos: true, limit: 200, signal: ac.signal })
-      .then(setVehiculos)
-      .catch((e) => {
-        if (isAbortError(e)) return
-        setError((prev) => prev ?? (e instanceof Error ? e.message : 'No se pudieron cargar los vehículos'))
-      })
-    return () => ac.abort()
-  }, [])
-
-  const hoy = useMemo(() => sumGuias(guias), [guias])
-  const prevStats = useMemo(() => sumGuias(ayer), [ayer])
-  const recientes = useMemo(
-    () => [...guias].sort((a, b) => b.hora_envio.localeCompare(a.hora_envio)).slice(0, 5),
-    [guias],
-  )
-  const porFundo = useMemo(() => topCounts(guias, 'fundo', 5), [guias])
-  const porTurno = useMemo(() => topCounts(guias, 'turno', 3), [guias])
-  const porModulo = useMemo(() => topCounts(guias, 'modulo', 3), [guias])
-  const disponibles = vehiculos.filter((v) => v.activo)
+  const hoy = resumen?.hoy ?? { count: 0, jabas: 0, jarras: 0 }
+  const prevStats = resumen?.ayer ?? { count: 0, jabas: 0, jarras: 0 }
+  const recientes = resumen?.recientes ?? []
+  const porFundo = { rows: resumen?.por_fundo ?? [] }
+  const porTurno = { rows: resumen?.por_turno ?? [] }
+  const porModulo = { rows: resumen?.por_modulo ?? [] }
+  const disponibles = resumen?.vehiculos_muestra ?? []
+  const vehiculosTotal = resumen?.vehiculos_total ?? 0
+  const vehiculosActivos = resumen?.vehiculos_activos ?? 0
   const maxFundo = Math.max(1, ...porFundo.rows.map((r) => r.count))
   const maxModuloPct = Math.max(1, ...porModulo.rows.map((r) => r.pct))
   const esHoy = fecha === todayIso
@@ -286,7 +238,7 @@ export function InicioPage() {
         />
         <KpiCard
           label="Vehículos"
-          value={loading ? '—' : `${disponibles.length}/${vehiculos.length}`}
+          value={loading ? '—' : `${vehiculosActivos}/${vehiculosTotal}`}
           hint="Disponibles / total"
           icon={Truck}
           tone="bg-warn-soft text-warn"
@@ -365,7 +317,7 @@ export function InicioPage() {
             ) : disponibles.length === 0 ? (
               <p className="py-6 text-sm text-muted">No hay vehículos activos.</p>
             ) : (
-              disponibles.slice(0, 6).map((v) => (
+              disponibles.map((v) => (
                 <Link
                   key={v.id}
                   to="/flota"

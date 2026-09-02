@@ -554,6 +554,62 @@ class GuiaIngresoPatch(BaseModel):
         return cleaned
 
 
+class DashboardKpis(BaseModel):
+    count: int
+    jabas: int
+    jarras: int
+
+
+class DashboardGrupo(BaseModel):
+    label: str
+    count: int
+    jarras: int
+    pct: int
+
+
+class VehiculoResumen(ORMModel):
+    id: int
+    placa: str
+    proveedor_id: int
+    chofer_id: int | None
+    activo: bool
+
+
+class DashboardResumenOut(BaseModel):
+    fecha: date
+    hoy: DashboardKpis
+    ayer: DashboardKpis
+    recientes: list[GuiaIngresoOut]
+    por_fundo: list[DashboardGrupo]
+    por_turno: list[DashboardGrupo]
+    por_modulo: list[DashboardGrupo]
+    vehiculos_activos: int
+    vehiculos_total: int
+    vehiculos_muestra: list[VehiculoResumen]
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class GuiaFacets(BaseModel):
+    fundos: list[str]
+    modulos: list[str]
+    turnos: list[str]
+    lotes: list[str]
+    grupos: list[str]
+    tipos_producto: list[str]
+
+
+class LookupsOut(BaseModel):
+    grupos: list[GrupoOut] = Field(default_factory=list)
+    roles: list[RolOut] = Field(default_factory=list)
+    cargos: list[CargoOut] = Field(default_factory=list)
+    areas: list[AreaOut] = Field(default_factory=list)
+    proveedores: list[ProveedorOut] = Field(default_factory=list)
+    choferes: list[ChoferOut] = Field(default_factory=list)
+
+
 class GuiaContextoOut(BaseModel):
     usuario_id: int
     usuario_dni: str

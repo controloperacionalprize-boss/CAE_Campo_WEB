@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from ..crud import count_rows, get_row, list_rows
+from ..crud import get_row, list_rows
 from ..db import get_conn
 
 router = APIRouter(prefix="/api/v1", tags=["ubicaciones"])
@@ -123,29 +123,4 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
         "turnos": turnos,
         "lotes": lotes,
         "grupos": grupos,
-    }
-
-@router.get("/dashboard/resumen")
-def dashboard_resumen():
-    """KPIs + muestra para Inicio en **una sola llamada** HTTP."""
-    with get_conn(write=False) as conn:
-        cur = conn.cursor()
-        empresas_total = count_rows(cur, "empresa", filters={"activo": True})
-        fundos_total = count_rows(cur, "fundo", filters={"activo": True})
-        turnos_total = count_rows(cur, "turno", filters={"activo": True})
-        vehiculos_total = count_rows(cur, "vehiculo", filters={"activo": True})
-        empresas_muestra, _ = list_rows(
-            cur, "empresa", filters={"activo": True}, skip=0, limit=3, order="razon_social", with_count=False
-        )
-        vehiculos_muestra, _ = list_rows(
-            cur, "vehiculo", filters={"activo": True}, skip=0, limit=3, order="placa", with_count=False
-        )
-
-    return {
-        "empresas": empresas_total,
-        "fundos": fundos_total,
-        "turnos": turnos_total,
-        "vehiculos": vehiculos_total,
-        "empresas_muestra": empresas_muestra,
-        "vehiculos_muestra": vehiculos_muestra,
     }

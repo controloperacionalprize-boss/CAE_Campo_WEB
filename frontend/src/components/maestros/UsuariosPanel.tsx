@@ -21,7 +21,12 @@ import { useLookups } from '../../context/LookupsContext'
 import type { Area, Cargo, Grupo, Rol, Usuario } from '../../types/api'
 
 export function UsuariosPanel({ createSignal }: { createSignal?: number }) {
-  const { grupos, roles, cargos, areas, loading: lookupsLoading, error: lookupsError } = useLookups()
+  const { grupos, roles, cargos, areas, loading: lookupsLoading, error: lookupsError } = useLookups([
+    'grupos',
+    'roles',
+    'cargos',
+    'areas',
+  ])
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [total, setTotal] = useState(0)
   const [incluirInactivos, setIncluirInactivos] = useState(false)

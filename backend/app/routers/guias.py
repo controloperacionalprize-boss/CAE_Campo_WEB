@@ -4,25 +4,39 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from .. import schemas as S
-from ..crud import get_row, list_rows
+from ..crud import get_row
 from ..db import get_conn
 from ..guia_ingreso import (
     contexto,
     crear,
+    listar_guias,
     parchear,
     recepcionar_acopio,
     recepcionar_planta,
+    resumen_dashboard,
     serialize_guia,
 )
 from ..realtime import publish_guia
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
+TextFilter = Annotated[str | None, Query(max_length=120)]
 
 router = APIRouter(prefix="/api/v1", tags=["guias-ingreso"])
 
 
-def _page(rows, total, skip, limit):
-    return {"items": rows, "total": total, "skip": skip, "limit": limit}
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
+
+
+@router.get("/dashboard/resumen", response_model=S.DashboardResumenOut)
+def get_dashboard_resumen(fecha: date | None = None):
+    """KPIs de despacho del día (conteos en SQL + 5 recientes). Una sola llamada."""
+    day = fecha or date.today()
+    with get_conn(write=False) as conn:
+        return resumen_dashboard(conn.cursor(), day)
 
 
 @router.get("/guias-ingreso/contexto", response_model=S.GuiaContextoOut)
@@ -57,11 +71,16 @@ def list_guias(
     estado: Annotated[str | None, Query(max_length=20)] = None,
     recepcionado_acopio: bool | None = None,
     recepcionado_planta: bool | None = None,
+    fundo: TextFilter = None,
+    modulo: Annotated[str | None, Query(max_length=20)] = None,
+    turno: Annotated[str | None, Query(max_length=20)] = None,
+    lote: Annotated[str | None, Query(max_length=30)] = None,
+    grupo: Annotated[str | None, Query(max_length=80)] = None,
+    tipo_producto: Annotated[str | None, Query(max_length=80)] = None,
 ):
     with get_conn(write=False) as conn:
-        rows, total = list_rows(
+        return listar_guias(
             conn.cursor(),
-            "guia_ingreso",
             filters={
                 "fecha": fecha,
                 "fundo_id": fundo_id,
@@ -72,14 +91,17 @@ def list_guias(
                 "estado": estado.strip().lower() if estado else None,
                 "recepcionado_acopio": recepcionado_acopio,
                 "recepcionado_planta": recepcionado_planta,
+                "fundo": _clean(fundo),
+                "modulo": _clean(modulo),
+                "turno": _clean(turno),
+                "lote": _clean(lote),
+                "grupo": _clean(grupo),
+                "tipo_producto": _clean(tipo_producto),
             },
             q=q,
             skip=skip,
             limit=limit,
-            order="codigo",
-            descending=True,
         )
-    return _page([serialize_guia(r) for r in rows], total, skip, limit)
 
 
 @router.get("/guias-ingreso/{item_id}", response_model=S.GuiaIngresoOut)

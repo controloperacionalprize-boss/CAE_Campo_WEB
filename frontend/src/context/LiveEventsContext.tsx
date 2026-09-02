@@ -12,11 +12,20 @@ type LiveEventsState = {
 const LiveEventsContext = createContext<LiveEventsState | null>(null)
 
 export function LiveEventsProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<LiveStatus>('connecting')
+  const [status, setStatus] = useState<LiveStatus>('disconnected')
   const listeners = useRef(new Set<Listener>())
+  const acRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
+  const stop = useCallback(() => {
+    acRef.current?.abort()
+    acRef.current = null
+    setStatus('disconnected')
+  }, [])
+
+  const start = useCallback(() => {
+    if (acRef.current) return
     const ac = new AbortController()
+    acRef.current = ac
     void connectGuiaEvents(
       (event) => {
         listeners.current.forEach((fn) => fn(event))
@@ -24,15 +33,21 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       setStatus,
       ac.signal,
     )
-    return () => ac.abort()
   }, [])
 
-  const subscribe = useCallback((listener: Listener) => {
-    listeners.current.add(listener)
-    return () => {
-      listeners.current.delete(listener)
-    }
-  }, [])
+  useEffect(() => () => stop(), [stop])
+
+  const subscribe = useCallback(
+    (listener: Listener) => {
+      listeners.current.add(listener)
+      if (listeners.current.size === 1) start()
+      return () => {
+        listeners.current.delete(listener)
+        if (listeners.current.size === 0) stop()
+      }
+    },
+    [start, stop],
+  )
 
   const value = useMemo<LiveEventsState>(() => ({ status, subscribe }), [status, subscribe])
 

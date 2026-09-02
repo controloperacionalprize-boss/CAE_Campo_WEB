@@ -123,14 +123,44 @@ export type FundoDetalle = {
   grupos: Grupo[]
 }
 
-/** Respuesta de GET /api/v1/dashboard/resumen — 1 sola llamada */
+/** Respuesta de GET /api/v1/dashboard/resumen — KPIs de despacho en 1 llamada */
+export type DashboardKpis = {
+  count: number
+  jabas: number
+  jarras: number
+}
+
+export type DashboardGrupo = {
+  label: string
+  count: number
+  jarras: number
+  pct: number
+}
+
 export type DashboardResumen = {
-  empresas: number
-  fundos: number
-  turnos: number
-  vehiculos: number
-  empresas_muestra: Empresa[]
+  fecha: string
+  hoy: DashboardKpis
+  ayer: DashboardKpis
+  recientes: GuiaIngreso[]
+  por_fundo: DashboardGrupo[]
+  por_turno: DashboardGrupo[]
+  por_modulo: DashboardGrupo[]
+  vehiculos_activos: number
+  vehiculos_total: number
   vehiculos_muestra: Vehiculo[]
+}
+
+export type GuiaFacets = {
+  fundos: string[]
+  modulos: string[]
+  turnos: string[]
+  lotes: string[]
+  grupos: string[]
+  tipos_producto: string[]
+}
+
+export type GuiaListPage = Paginated<GuiaIngreso> & {
+  facets?: GuiaFacets
 }
 
 export type GuiaIngreso = {

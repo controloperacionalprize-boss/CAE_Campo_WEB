@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from .. import schemas as S
 from ..crud import get_row, insert_row, list_rows, soft_delete, update_row
@@ -51,6 +51,53 @@ def _patch(table: str, pk: str, pk_value, data: dict):
 def _deactivate(table: str, pk: str, pk_value):
     with get_conn() as conn:
         return soft_delete(conn.cursor(), table, pk, pk_value)
+
+
+LOOKUP_KEYS = {
+    "grupos": ("grupo", "nombre"),
+    "roles": ("rol", "nombre"),
+    "cargos": ("cargo", "nombre"),
+    "areas": ("areas", "nombre"),
+    "proveedores": ("proveedor", "nombre"),
+    "choferes": ("chofer", "nombre"),
+}
+
+
+@router.get("/lookups")
+def get_lookups(
+    incluir_inactivos: IncluirInactivosQ = False,
+    keys: Annotated[
+        str | None,
+        Query(description="Lista separada por comas: grupos,roles,cargos,areas,proveedores,choferes"),
+    ] = None,
+):
+    """Catálogos de apoyo en **una** conexión. El front pide solo las claves de la pantalla."""
+    wanted = [k.strip().lower() for k in (keys or "").split(",") if k.strip()]
+    if not wanted:
+        wanted = list(LOOKUP_KEYS)
+    unknown = [k for k in wanted if k not in LOOKUP_KEYS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail="Claves de catálogo no válidas: " + ", ".join(unknown),
+        )
+    activo = None if incluir_inactivos else True
+    out: dict = {}
+    with get_conn(write=False) as conn:
+        cur = conn.cursor()
+        for key in wanted:
+            table, order = LOOKUP_KEYS[key]
+            rows, _ = list_rows(
+                cur,
+                table,
+                filters={"activo": activo},
+                skip=0,
+                limit=500,
+                order=order,
+                with_count=False,
+            )
+            out[key] = rows
+    return out
 
 
 @router.get("/actividades-economicas")
@@ -397,15 +444,20 @@ def list_lotes(
     activo: ActivoQ = True,
     incluir_inactivos: IncluirInactivosQ = False,
     turno_id: int | None = None,
+    turno_ids: Annotated[list[int] | None, Query()] = None,
 ):
     activo = _resolve_activo(activo, incluir_inactivos)
+    ids = [i for i in (turno_ids or []) if i > 0][:500]
     return _list(
         "lote",
         order="codigo",
         skip=skip,
         limit=limit,
         q=q,
-        filters={"activo": activo, "turno_id": turno_id},
+        filters={
+            "activo": activo,
+            "turno_id": ids if ids else turno_id,
+        },
     )
 
 

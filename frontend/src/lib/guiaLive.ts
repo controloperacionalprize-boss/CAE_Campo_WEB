@@ -15,6 +15,12 @@ export type GuiaQueryFilters = {
   q?: string
   recepcionado_acopio?: boolean
   recepcionado_planta?: boolean
+  fundo?: string
+  modulo?: string
+  turno?: string
+  lote?: string
+  grupo?: string
+  tipo_producto?: string
 }
 
 export function upsertGuia(items: GuiaIngreso[], guia: GuiaIngreso): GuiaIngreso[] {
@@ -53,6 +59,12 @@ export function matchesGuiaQuery(guia: GuiaIngreso, filters: GuiaQueryFilters): 
   ) {
     return false
   }
+  if (filters.fundo && guia.fundo !== filters.fundo) return false
+  if (filters.modulo && guia.modulo !== filters.modulo) return false
+  if (filters.turno && guia.turno !== filters.turno) return false
+  if (filters.lote && guia.lote !== filters.lote) return false
+  if (filters.grupo && guia.grupo !== filters.grupo) return false
+  if (filters.tipo_producto && guia.tipo_producto !== filters.tipo_producto) return false
   const q = filters.q?.trim().toLowerCase()
   if (q) {
     const hit = SEARCH_FIELDS.some((key) => String(guia[key] ?? '').toLowerCase().includes(q))
@@ -74,6 +86,31 @@ export function applyGuiaWithQuery(
   }
   const next = sortGuiasByCodigoDesc(upsertGuia(items, guia))
   return { items: next, total: existed ? total : total + 1 }
+}
+
+export function applyGuiaOnPage(
+  items: GuiaIngreso[],
+  total: number,
+  guia: GuiaIngreso,
+  filters: GuiaQueryFilters,
+  page: { skip: number; limit: number },
+): { items: GuiaIngreso[]; total: number } {
+  const existed = items.some((x) => x.id === guia.id)
+  if (!matchesGuiaQuery(guia, filters)) {
+    if (!existed) return { items, total }
+    return { items: items.filter((x) => x.id !== guia.id), total: Math.max(0, total - 1) }
+  }
+  if (existed) {
+    return { items: sortGuiasByCodigoDesc(upsertGuia(items, guia)), total }
+  }
+  const nextTotal = total + 1
+  if (page.skip === 0) {
+    return {
+      items: sortGuiasByCodigoDesc(upsertGuia(items, guia)).slice(0, page.limit),
+      total: nextTotal,
+    }
+  }
+  return { items, total: nextTotal }
 }
 
 export function overlayKnownGuias(

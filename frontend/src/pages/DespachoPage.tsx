@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Calendar, ChevronRight, Clock } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Calendar, Clock } from 'lucide-react'
 import { Card, CardHeader } from '../components/ui/Card'
 import {
   Breadcrumbs,
@@ -12,11 +12,12 @@ import {
 } from '../components/ui/Feedback'
 import { Input, SearchInput, Select } from '../components/ui/Form'
 import { listPage, isAbortError } from '../lib/api'
-import { applyGuiaWithQuery, pruneKnownGuias, sortGuiasByCodigoDesc } from '../lib/guiaLive'
+import { applyGuiaOnPage, pruneKnownGuias, sortGuiasByCodigoDesc } from '../lib/guiaLive'
 import { LiveStatusBadge, useOnGuiaLive } from '../context/LiveEventsContext'
 import { cn } from '../lib/utils'
 import { useDebounce } from '../hooks/useDebounce'
-import type { GuiaIngreso } from '../types/api'
+import { Pagination } from '../components/ui/Table'
+import type { GuiaFacets, GuiaIngreso, GuiaListPage } from '../types/api'
 
 function EstacionPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -38,10 +39,13 @@ function parseBoolFilter(value: string): boolean | undefined {
   return undefined
 }
 
-function uniqueSorted(values: Array<string | null | undefined>) {
-  return [...new Set(values.map((v) => (v ?? '').trim()).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b, 'es'),
-  )
+const EMPTY_FACETS: GuiaFacets = {
+  fundos: [],
+  modulos: [],
+  turnos: [],
+  lotes: [],
+  grupos: [],
+  tipos_producto: [],
 }
 
 function formatFecha(iso: string) {
@@ -122,7 +126,9 @@ export function DespachoPage() {
   const [acopio, setAcopio] = useState('')
   const [planta, setPlanta] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [showAll, setShowAll] = useState(false)
+  const [skip, setSkip] = useState(0)
+  const [limit, setLimit] = useState(50)
+  const [facets, setFacets] = useState<GuiaFacets>(EMPTY_FACETS)
   const knownRef = useRef(new Map<number, GuiaIngreso>())
   const filtersRef = useRef({
     fecha,
@@ -130,40 +136,72 @@ export function DespachoPage() {
     q: debouncedQ,
     acopio,
     planta,
+    fundo,
+    modulo,
+    turno,
+    lote,
+    grupo,
+    tipoProducto,
   })
-  filtersRef.current = { fecha, estado, q: debouncedQ, acopio, planta }
+  filtersRef.current = {
+    fecha,
+    estado,
+    q: debouncedQ,
+    acopio,
+    planta,
+    fundo,
+    modulo,
+    turno,
+    lote,
+    grupo,
+    tipoProducto,
+  }
+  const pageRef = useRef({ skip, limit })
+  pageRef.current = { skip, limit }
   const totalRef = useRef(total)
   totalRef.current = total
+
+  function queryFilters() {
+    const f = filtersRef.current
+    return {
+      fecha: f.fecha || undefined,
+      estado: f.estado || undefined,
+      q: f.q || undefined,
+      recepcionado_acopio: parseBoolFilter(f.acopio),
+      recepcionado_planta: parseBoolFilter(f.planta),
+      fundo: f.fundo || undefined,
+      modulo: f.modulo || undefined,
+      turno: f.turno || undefined,
+      lote: f.lote || undefined,
+      grupo: f.grupo || undefined,
+      tipo_producto: f.tipoProducto || undefined,
+    }
+  }
 
   async function load(signal?: AbortSignal) {
     setLoading(true)
     setError(null)
-    const filters = {
-      fecha: fecha || undefined,
-      estado: estado || undefined,
-      q: debouncedQ || undefined,
-      recepcionado_acopio: parseBoolFilter(acopio),
-      recepcionado_planta: parseBoolFilter(planta),
-    }
+    const filters = queryFilters()
     try {
       const page = await listPage<GuiaIngreso>('/api/v1/guias-ingreso', {
-        skip: 0,
-        limit: 500,
+        skip,
+        limit,
         ...filters,
         signal,
-      })
+      }) as GuiaListPage
       if (signal?.aborted) return
       const known = knownRef.current
       let nextItems = page.items
       let nextTotal = page.total
       for (const guia of known.values()) {
-        const merged = applyGuiaWithQuery(nextItems, nextTotal, guia, filters)
+        const merged = applyGuiaOnPage(nextItems, nextTotal, guia, filters, { skip, limit })
         nextItems = merged.items
         nextTotal = merged.total
       }
       pruneKnownGuias(page.items, known)
       setItems(sortGuiasByCodigoDesc(nextItems))
       setTotal(nextTotal)
+      setFacets(page.facets ?? EMPTY_FACETS)
       setSelectedId((current) => {
         if (current && nextItems.some((g) => g.id === current)) return current
         return nextItems[0]?.id ?? null
@@ -173,6 +211,7 @@ export function DespachoPage() {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar los despachos')
       setItems([])
       setTotal(0)
+      setFacets(EMPTY_FACETS)
       setSelectedId(null)
     } finally {
       if (!signal?.aborted) setLoading(false)
@@ -180,72 +219,46 @@ export function DespachoPage() {
   }
 
   useEffect(() => {
+    setSkip(0)
+  }, [fecha, estado, debouncedQ, acopio, planta, fundo, modulo, turno, lote, grupo, tipoProducto])
+
+  useEffect(() => {
     const ac = new AbortController()
     void load(ac.signal)
     return () => ac.abort()
-  }, [fecha, estado, debouncedQ, acopio, planta])
+  }, [fecha, estado, debouncedQ, acopio, planta, fundo, modulo, turno, lote, grupo, tipoProducto, skip, limit])
 
   useOnGuiaLive((event) => {
     const guia = event.guia
     knownRef.current.set(guia.id, guia)
-    const filters = {
-      fecha: filtersRef.current.fecha || undefined,
-      estado: filtersRef.current.estado || undefined,
-      q: filtersRef.current.q || undefined,
-      recepcionado_acopio: parseBoolFilter(filtersRef.current.acopio),
-      recepcionado_planta: parseBoolFilter(filtersRef.current.planta),
-    }
+    const filters = queryFilters()
+    const page = pageRef.current
     setItems((current) => {
-      const merged = applyGuiaWithQuery(current, totalRef.current, guia, filters)
+      const merged = applyGuiaOnPage(current, totalRef.current, guia, filters, page)
       totalRef.current = merged.total
       setTotal(merged.total)
       return merged.items
     })
   })
 
-  const fundos = useMemo(() => uniqueSorted(items.map((g) => g.fundo)), [items])
-  const scopedFundo = useMemo(
-    () => (fundo ? items.filter((g) => g.fundo === fundo) : items),
-    [items, fundo],
-  )
-  const modulos = useMemo(() => uniqueSorted(scopedFundo.map((g) => g.modulo)), [scopedFundo])
-  const scopedModulo = useMemo(
-    () => (modulo ? scopedFundo.filter((g) => g.modulo === modulo) : scopedFundo),
-    [scopedFundo, modulo],
-  )
-  const turnos = useMemo(() => uniqueSorted(scopedModulo.map((g) => g.turno)), [scopedModulo])
-  const scopedTurno = useMemo(
-    () => (turno ? scopedModulo.filter((g) => g.turno === turno) : scopedModulo),
-    [scopedModulo, turno],
-  )
-  const lotes = useMemo(() => uniqueSorted(scopedTurno.map((g) => g.lote)), [scopedTurno])
-  const grupos = useMemo(() => uniqueSorted(items.map((g) => g.grupo)), [items])
-  const tiposProducto = useMemo(() => uniqueSorted(items.map((g) => g.tipo_producto)), [items])
-
-  const filtered = useMemo(() => {
-    return items.filter((g) => {
-      if (fundo && g.fundo !== fundo) return false
-      if (modulo && g.modulo !== modulo) return false
-      if (turno && g.turno !== turno) return false
-      if (lote && g.lote !== lote) return false
-      if (grupo && g.grupo !== grupo) return false
-      if (tipoProducto && g.tipo_producto !== tipoProducto) return false
-      return true
-    })
-  }, [items, fundo, modulo, turno, lote, grupo, tipoProducto])
+  const fundos = facets.fundos
+  const modulos = facets.modulos
+  const turnos = facets.turnos
+  const lotes = facets.lotes
+  const grupos = facets.grupos
+  const tiposProducto = facets.tipos_producto
 
   useEffect(() => {
-    if (filtered.length === 0) {
+    if (items.length === 0) {
       setSelectedId(null)
       return
     }
-    if (!filtered.some((g) => g.id === selectedId)) {
-      setSelectedId(filtered[0].id)
+    if (!items.some((g) => g.id === selectedId)) {
+      setSelectedId(items[0].id)
     }
-  }, [filtered, selectedId])
+  }, [items, selectedId])
 
-  const selected = filtered.find((g) => g.id === selectedId) ?? null
-  const list = showAll ? filtered : filtered.slice(0, 8)
+  const selected = items.find((g) => g.id === selectedId) ?? null
   const hasActiveFilters = !!(
     fecha ||
     estado ||
@@ -405,7 +418,7 @@ export function DespachoPage() {
 
       {loading ? (
         <LoadingBlock label="Cargando despachos…" />
-      ) : filtered.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState
           title="Sin despachos"
           description={
@@ -420,15 +433,11 @@ export function DespachoPage() {
             <div className="border-b border-line px-4 py-3">
               <CardHeader
                 title="Despachos recientes"
-                description={
-                  filtered.length === items.length
-                    ? `${total} registros`
-                    : `${filtered.length} de ${items.length}`
-                }
+                description={`${total} registros`}
               />
             </div>
             <ul className="flex-1 divide-y divide-line overflow-y-auto">
-              {list.map((g) => (
+              {items.map((g) => (
                 <li key={g.id}>
                   <button
                     type="button"
@@ -461,16 +470,19 @@ export function DespachoPage() {
                 </li>
               ))}
             </ul>
-            {filtered.length > 8 && (
-              <button
-                type="button"
-                onClick={() => setShowAll((v) => !v)}
-                className="flex items-center justify-center gap-1 border-t border-line px-4 py-2.5 text-xs font-medium text-teal-800 hover:bg-sand-50"
-              >
-                {showAll ? 'Ver menos' : 'Ver todos los despachos'}
-                <ChevronRight className={cn('size-3.5 transition', showAll && 'rotate-90')} />
-              </button>
-            )}
+            <div className="border-t border-line px-3 py-2">
+              <Pagination
+                skip={skip}
+                limit={limit}
+                total={total}
+                onChange={setSkip}
+                onLimitChange={(next) => {
+                  setLimit(next)
+                  setSkip(0)
+                }}
+                limitOptions={[20, 50, 100]}
+              />
+            </div>
           </Card>
 
           <Card padding="none">
