@@ -48,10 +48,22 @@ def close_pool() -> None:
             _pool = None
 
 
+def _conn_is_alive(conn) -> bool:
+    try:
+        conn.cursor().execute("SELECT 1")
+        conn.rollback()
+        return True
+    except Exception:
+        return False
+
+
 @contextmanager
 def get_conn(*, write: bool = True):
     pool = get_pool()
     conn = pool.getconn()
+    if conn.closed or not _conn_is_alive(conn):
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
     closed = False
     try:
         yield conn

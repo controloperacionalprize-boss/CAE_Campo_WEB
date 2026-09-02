@@ -13,3 +13,5 @@ web/node_modules/
 web/dist/
 *.log
 .DS_Store
+backend/app/db.py
+backend/requirements.txt

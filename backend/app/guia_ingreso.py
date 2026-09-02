@@ -144,12 +144,7 @@ def resolve_sesion_movil(cur, payload: S.GuiaIngresoIn, snap_u: dict) -> dict:
         sesion.update(snapshot_grupo(cur, grupo))
     if fundo:
         snap_f = snapshot_fundo(cur, fundo)
-        if grupo is not None and sesion.get("fundo_id") and sesion["fundo_id"] != snap_f["fundo_id"]:
-            raise HTTPException(status_code=400, detail="El grupo no pertenece al fundo indicado")
         sesion.update(snap_f)
-        if grupo is None and snap_u.get("fundo_id") != snap_f["fundo_id"]:
-            sesion["grupo_id"] = None
-            sesion["grupo"] = ""
     return sesion
 
 
