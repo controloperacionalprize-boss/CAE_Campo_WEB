@@ -18,6 +18,11 @@ def _harden_dsn(url: str) -> str:
     query.pop("channel_binding", None)
     if query.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
         query["sslmode"] = "require"
+    query.setdefault("keepalives", "1")
+    query.setdefault("keepalives_idle", "30")
+    query.setdefault("keepalives_interval", "10")
+    query.setdefault("keepalives_count", "3")
+    query.setdefault("application_name", "despacho-campo")
     return urlunparse(parsed._replace(query=urlencode(query)))
 
 
@@ -48,22 +53,18 @@ def close_pool() -> None:
             _pool = None
 
 
-def _conn_is_alive(conn) -> bool:
-    try:
-        conn.cursor().execute("SELECT 1")
-        conn.rollback()
-        return True
-    except Exception:
-        return False
+def _checkout():
+    pool = get_pool()
+    conn = pool.getconn()
+    if conn.closed:
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+    return pool, conn
 
 
 @contextmanager
 def get_conn(*, write: bool = True):
-    pool = get_pool()
-    conn = pool.getconn()
-    if conn.closed or not _conn_is_alive(conn):
-        pool.putconn(conn, close=True)
-        conn = pool.getconn()
+    pool, conn = _checkout()
     closed = False
     try:
         yield conn

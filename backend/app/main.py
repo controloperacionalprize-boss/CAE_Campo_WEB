@@ -12,7 +12,7 @@ from .auth import require_api_key
 from .config import get_settings
 from .db import close_pool, get_conn
 from .errors import format_validation, json_error, normalize_http_detail
-from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from .middleware import RateLimitMiddleware, RequestLogMiddleware, SecurityHeadersMiddleware
 from .realtime import hub
 from .routers.eventos import router as eventos_router
 from .routers.guias import router as guias_router
@@ -24,9 +24,17 @@ logger = logging.getLogger("despacho")
 settings = get_settings()
 
 
+def _configure_logging() -> None:
+    log = logging.getLogger("despacho")
+    log.setLevel(logging.INFO)
+    log.propagate = True
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _configure_logging()
     hub.bind_loop(asyncio.get_running_loop())
+    logger.info("API lista")
     yield
     hub.close()
     close_pool()
@@ -61,6 +69,7 @@ app = FastAPI(
         },
     },
 )
+app.add_middleware(RequestLogMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, max_per_minute=settings.rate_limit_per_minute)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list())

@@ -13,6 +13,8 @@ export type GuiaQueryFilters = {
   fecha?: string
   estado?: string
   q?: string
+  recepcionado_acopio?: boolean
+  recepcionado_planta?: boolean
 }
 
 export function upsertGuia(items: GuiaIngreso[], guia: GuiaIngreso): GuiaIngreso[] {
@@ -39,6 +41,18 @@ export function applyGuiaForFecha(items: GuiaIngreso[], guia: GuiaIngreso, fecha
 export function matchesGuiaQuery(guia: GuiaIngreso, filters: GuiaQueryFilters): boolean {
   if (filters.fecha && guia.fecha !== filters.fecha) return false
   if (filters.estado && guia.estado.toLowerCase() !== filters.estado.toLowerCase()) return false
+  if (
+    filters.recepcionado_acopio !== undefined &&
+    Boolean(guia.recepcionado_acopio) !== filters.recepcionado_acopio
+  ) {
+    return false
+  }
+  if (
+    filters.recepcionado_planta !== undefined &&
+    Boolean(guia.recepcionado_planta) !== filters.recepcionado_planta
+  ) {
+    return false
+  }
   const q = filters.q?.trim().toLowerCase()
   if (q) {
     const hit = SEARCH_FIELDS.some((key) => String(guia[key] ?? '').toLowerCase().includes(q))

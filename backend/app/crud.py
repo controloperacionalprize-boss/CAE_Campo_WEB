@@ -150,6 +150,10 @@ ALLOWED_COLUMNS = {
         "vehiculo_id",
         "placa",
         "estado",
+        "recepcionado_acopio",
+        "recepcionado_acopio_at",
+        "recepcionado_planta",
+        "recepcionado_planta_at",
         "created_at",
         "updated_at",
     },
@@ -226,6 +230,8 @@ ALLOWED_COLUMNS = {
         "total_jarras",
         "total_jabas",
         "estado",
+        "recepcionado",
+        "recepcionado_at",
         "created_at",
         "updated_at",
     },
@@ -294,7 +300,9 @@ def _raise_db(exc: Exception) -> None:
         elif "guia_ingreso" in text and "estado" in text:
             detail = "El estado debe ser registrado o anulado"
         elif "viaje" in text and "estado" in text:
-            detail = "El estado del viaje debe ser en_proceso, finalizado o anulado"
+            detail = "El estado del viaje debe ser en_proceso, finalizado, recepcionado o anulado"
+        elif "orden_recepcion" in text:
+            detail = "La guía debe recepcionarse en acopio antes que en planta"
         elif "grr" in text and "estado" in text:
             detail = "El estado de la GRR debe ser emitido o anulado"
         elif "estado" in text:
@@ -302,6 +310,12 @@ def _raise_db(exc: Exception) -> None:
         else:
             detail = "Los datos no cumplen una regla del sistema"
         raise HTTPException(status_code=400, detail=detail) from None
+    if code == errorcodes.RESTRICT_VIOLATION:
+        raise HTTPException(
+            status_code=409,
+            detail=str(getattr(exc, "pgerror", "") or integrity_message()).split("\n")[0]
+            or "No se puede eliminar este registro: se conserva por auditoría",
+        ) from None
     if isinstance(exc, IntegrityError):
         raise HTTPException(status_code=409, detail=integrity_message()) from None
     raise HTTPException(
@@ -310,22 +324,11 @@ def _raise_db(exc: Exception) -> None:
     ) from None
 
 
-def list_rows(
-    cur,
+def _where_clause(
     table: str,
-    *,
-    filters: dict[str, Any] | None = None,
-    q: str | None = None,
-    skip: int = 0,
-    limit: int = 100,
-    order: str = "id",
-    descending: bool = False,
-) -> tuple[list[dict], int]:
-    _check_table(table)
-    cols = sorted(ALLOWED_COLUMNS[table])
-    if order not in ALLOWED_COLUMNS[table]:
-        order = "id" if "id" in ALLOWED_COLUMNS[table] else "codigo"
-
+    filters: dict[str, Any] | None,
+    q: str | None,
+) -> tuple[str, list[Any]]:
     where: list[str] = []
     params: list[Any] = []
     for key, value in (filters or {}).items():
@@ -355,15 +358,53 @@ def list_rows(
             params.extend([pattern] * len(like_cols))
 
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
-    select_sql = ", ".join(cols)
+    return where_sql, params
+
+
+def count_rows(
+    cur,
+    table: str,
+    *,
+    filters: dict[str, Any] | None = None,
+    q: str | None = None,
+) -> int:
+    _check_table(table)
+    where_sql, params = _where_clause(table, filters, q)
     cur.execute(f"SELECT COUNT(*) AS n FROM {table} {where_sql}", params)
-    total = int(cur.fetchone()["n"])
+    return int(cur.fetchone()["n"])
+
+
+def list_rows(
+    cur,
+    table: str,
+    *,
+    filters: dict[str, Any] | None = None,
+    q: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+    order: str = "id",
+    descending: bool = False,
+    with_count: bool = True,
+) -> tuple[list[dict], int]:
+    _check_table(table)
+    cols = sorted(ALLOWED_COLUMNS[table])
+    if order not in ALLOWED_COLUMNS[table]:
+        order = "id" if "id" in ALLOWED_COLUMNS[table] else "codigo"
+
+    where_sql, params = _where_clause(table, filters, q)
+    total = 0
+    if with_count:
+        cur.execute(f"SELECT COUNT(*) AS n FROM {table} {where_sql}", params)
+        total = int(cur.fetchone()["n"])
     direction = "DESC" if descending else "ASC"
     cur.execute(
-        f"SELECT {select_sql} FROM {table} {where_sql} ORDER BY {order} {direction} LIMIT %s OFFSET %s",
+        f"SELECT {', '.join(cols)} FROM {table} {where_sql} ORDER BY {order} {direction} LIMIT %s OFFSET %s",
         [*params, limit, skip],
     )
-    return list(cur.fetchall()), total
+    rows = list(cur.fetchall())
+    if not with_count:
+        total = len(rows)
+    return rows, total
 
 
 def get_row(cur, table: str, pk: str, pk_value: Any) -> dict:
@@ -372,6 +413,21 @@ def get_row(cur, table: str, pk: str, pk_value: Any) -> dict:
         raise ValueError("PK inválida")
     cols = ", ".join(sorted(ALLOWED_COLUMNS[table]))
     cur.execute(f"SELECT {cols} FROM {table} WHERE {pk} = %s", (pk_value,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=not_found(table))
+    return dict(row)
+
+
+def get_row_for_update(cur, table: str, pk: str, pk_value: Any) -> dict:
+    _check_table(table)
+    if pk not in ALLOWED_COLUMNS[table]:
+        raise ValueError("PK inválida")
+    cols = ", ".join(sorted(ALLOWED_COLUMNS[table]))
+    cur.execute(
+        f"SELECT {cols} FROM {table} WHERE {pk} = %s FOR UPDATE",
+        (pk_value,),
+    )
     row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=not_found(table))
@@ -389,18 +445,19 @@ def insert_row(cur, table: str, data: dict[str, Any], pk: str) -> dict:
     col_sql = ", ".join(columns)
     try:
         cur.execute(
-            f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders}) RETURNING {pk}",
+            f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders}) RETURNING *",
             values,
         )
-        pk_value = cur.fetchone()[pk]
+        row = cur.fetchone()
     except Exception as exc:
         _raise_db(exc)
-    return get_row(cur, table, pk, pk_value)
+    if not row:
+        raise HTTPException(status_code=500, detail="No se pudo crear el registro")
+    return dict(row)
 
 
 def update_row(cur, table: str, pk: str, pk_value: Any, data: dict[str, Any]) -> dict:
     _check_table(table)
-    get_row(cur, table, pk, pk_value)
     payload = {
         k: v
         for k, v in data.items()
@@ -415,10 +472,16 @@ def update_row(cur, table: str, pk: str, pk_value: Any, data: dict[str, Any]) ->
         values.append(v)
     values.append(pk_value)
     try:
-        cur.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE {pk} = %s", values)
+        cur.execute(
+            f"UPDATE {table} SET {', '.join(sets)} WHERE {pk} = %s RETURNING *",
+            values,
+        )
+        row = cur.fetchone()
     except Exception as exc:
         _raise_db(exc)
-    return get_row(cur, table, pk, pk_value)
+    if not row:
+        raise HTTPException(status_code=404, detail=not_found(table))
+    return dict(row)
 
 
 def soft_delete(cur, table: str, pk: str, pk_value: Any) -> dict:

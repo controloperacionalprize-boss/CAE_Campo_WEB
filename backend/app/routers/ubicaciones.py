@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from ..crud import get_row, list_rows
+from ..crud import count_rows, get_row, list_rows
 from ..db import get_conn
 
 router = APIRouter(prefix="/api/v1", tags=["ubicaciones"])
@@ -17,10 +17,10 @@ def arbol_ubicaciones(activo: bool | None = Query(True), incluir_inactivos: bool
     filters = {"activo": activo_filter} if activo_filter is not None else {}
     with get_conn(write=False) as conn:
         cur = conn.cursor()
-        empresas, _ = list_rows(cur, "empresa", filters=filters, skip=0, limit=500, order="razon_social")
-        fundos, _ = list_rows(cur, "fundo", filters=filters, skip=0, limit=500, order="nombre")
-        modulos, _ = list_rows(cur, "modulo", filters=filters, skip=0, limit=500, order="codigo")
-        turnos, _ = list_rows(cur, "turno", filters=filters, skip=0, limit=500, order="codigo")
+        empresas, _ = list_rows(cur, "empresa", filters=filters, skip=0, limit=500, order="razon_social", with_count=False)
+        fundos, _ = list_rows(cur, "fundo", filters=filters, skip=0, limit=500, order="nombre", with_count=False)
+        modulos, _ = list_rows(cur, "modulo", filters=filters, skip=0, limit=500, order="codigo", with_count=False)
+        turnos, _ = list_rows(cur, "turno", filters=filters, skip=0, limit=500, order="codigo", with_count=False)
 
     turnos_by_mod: dict[int, list] = {}
     for t in turnos:
@@ -81,6 +81,7 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
             skip=0,
             limit=500,
             order="codigo",
+            with_count=False,
         )
         modulo_ids = [m["id"] for m in modulos]
 
@@ -91,6 +92,7 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
             skip=0,
             limit=500,
             order="codigo",
+            with_count=False,
         )
         turno_ids = [t["id"] for t in turnos]
 
@@ -101,6 +103,7 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
             skip=0,
             limit=500,
             order="codigo",
+            with_count=False,
         )
 
         grupos, _ = list_rows(
@@ -110,6 +113,7 @@ def fundo_detalle(fundo_id: int, incluir_inactivos: bool = Query(False)):
             skip=0,
             limit=500,
             order="nombre",
+            with_count=False,
         )
     
     return {
@@ -126,15 +130,15 @@ def dashboard_resumen():
     """KPIs + muestra para Inicio en **una sola llamada** HTTP."""
     with get_conn(write=False) as conn:
         cur = conn.cursor()
-        _, empresas_total = list_rows(cur, "empresa", filters={"activo": True}, skip=0, limit=1, order="id")
-        _, fundos_total = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=1, order="id")
-        _, turnos_total = list_rows(cur, "turno", filters={"activo": True}, skip=0, limit=1, order="id")
-        _, vehiculos_total = list_rows(cur, "vehiculo", filters={"activo": True}, skip=0, limit=1, order="id")
+        empresas_total = count_rows(cur, "empresa", filters={"activo": True})
+        fundos_total = count_rows(cur, "fundo", filters={"activo": True})
+        turnos_total = count_rows(cur, "turno", filters={"activo": True})
+        vehiculos_total = count_rows(cur, "vehiculo", filters={"activo": True})
         empresas_muestra, _ = list_rows(
-            cur, "empresa", filters={"activo": True}, skip=0, limit=3, order="razon_social"
+            cur, "empresa", filters={"activo": True}, skip=0, limit=3, order="razon_social", with_count=False
         )
         vehiculos_muestra, _ = list_rows(
-            cur, "vehiculo", filters={"activo": True}, skip=0, limit=3, order="placa"
+            cur, "vehiculo", filters={"activo": True}, skip=0, limit=3, order="placa", with_count=False
         )
 
     return {

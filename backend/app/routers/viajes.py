@@ -17,6 +17,7 @@ from ..viajes import (
     obtener_grr,
     parchear_viaje,
     quitar_detalle,
+    recepcionar_grr,
 )
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
@@ -42,7 +43,7 @@ def get_viajes(
     if estado_norm and estado_norm not in S.ESTADOS_VIAJE:
         raise HTTPException(
             status_code=400,
-            detail="El estado del viaje debe ser en_proceso, finalizado o anulado",
+            detail="El estado del viaje debe ser en_proceso, finalizado, recepcionado o anulado",
         )
     tipo_norm = tipo_viaje.strip().lower() if tipo_viaje else None
     if tipo_norm and tipo_norm not in S.TIPOS_VIAJE:
@@ -122,3 +123,9 @@ def post_grr(viaje_id: int):
 def get_grr(viaje_id: int):
     with get_conn(write=False) as conn:
         return obtener_grr(conn.cursor(), viaje_id)
+
+
+@router.patch("/viajes/{viaje_id}/grr/recepcionar", response_model=S.GrrOut)
+def patch_recepcionar_grr(viaje_id: int):
+    with get_conn() as conn:
+        return recepcionar_grr(conn.cursor(), viaje_id)

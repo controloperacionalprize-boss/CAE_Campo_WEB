@@ -18,6 +18,26 @@ import { cn } from '../lib/utils'
 import { useDebounce } from '../hooks/useDebounce'
 import type { GuiaIngreso } from '../types/api'
 
+function EstacionPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium',
+        ok ? 'bg-success-soft text-success' : 'bg-sand-100 text-muted',
+      )}
+    >
+      <span className={cn('size-1.5 rounded-full', ok ? 'bg-success' : 'bg-muted/50')} />
+      {label}
+    </span>
+  )
+}
+
+function parseBoolFilter(value: string): boolean | undefined {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
 function uniqueSorted(values: Array<string | null | undefined>) {
   return [...new Set(values.map((v) => (v ?? '').trim()).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, 'es'),
@@ -99,11 +119,19 @@ export function DespachoPage() {
   const [lote, setLote] = useState('')
   const [grupo, setGrupo] = useState('')
   const [tipoProducto, setTipoProducto] = useState('')
+  const [acopio, setAcopio] = useState('')
+  const [planta, setPlanta] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
   const knownRef = useRef(new Map<number, GuiaIngreso>())
-  const filtersRef = useRef({ fecha, estado, q: debouncedQ })
-  filtersRef.current = { fecha, estado, q: debouncedQ }
+  const filtersRef = useRef({
+    fecha,
+    estado,
+    q: debouncedQ,
+    acopio,
+    planta,
+  })
+  filtersRef.current = { fecha, estado, q: debouncedQ, acopio, planta }
   const totalRef = useRef(total)
   totalRef.current = total
 
@@ -114,6 +142,8 @@ export function DespachoPage() {
       fecha: fecha || undefined,
       estado: estado || undefined,
       q: debouncedQ || undefined,
+      recepcionado_acopio: parseBoolFilter(acopio),
+      recepcionado_planta: parseBoolFilter(planta),
     }
     try {
       const page = await listPage<GuiaIngreso>('/api/v1/guias-ingreso', {
@@ -153,7 +183,7 @@ export function DespachoPage() {
     const ac = new AbortController()
     void load(ac.signal)
     return () => ac.abort()
-  }, [fecha, estado, debouncedQ])
+  }, [fecha, estado, debouncedQ, acopio, planta])
 
   useOnGuiaLive((event) => {
     const guia = event.guia
@@ -162,6 +192,8 @@ export function DespachoPage() {
       fecha: filtersRef.current.fecha || undefined,
       estado: filtersRef.current.estado || undefined,
       q: filtersRef.current.q || undefined,
+      recepcionado_acopio: parseBoolFilter(filtersRef.current.acopio),
+      recepcionado_planta: parseBoolFilter(filtersRef.current.planta),
     }
     setItems((current) => {
       const merged = applyGuiaWithQuery(current, totalRef.current, guia, filters)
@@ -214,7 +246,19 @@ export function DespachoPage() {
 
   const selected = filtered.find((g) => g.id === selectedId) ?? null
   const list = showAll ? filtered : filtered.slice(0, 8)
-  const hasActiveFilters = !!(fecha || estado || q || fundo || modulo || turno || lote || grupo || tipoProducto)
+  const hasActiveFilters = !!(
+    fecha ||
+    estado ||
+    q ||
+    fundo ||
+    modulo ||
+    turno ||
+    lote ||
+    grupo ||
+    tipoProducto ||
+    acopio ||
+    planta
+  )
 
   function clearFilters() {
     setFecha('')
@@ -226,6 +270,8 @@ export function DespachoPage() {
     setLote('')
     setGrupo('')
     setTipoProducto('')
+    setAcopio('')
+    setPlanta('')
   }
 
   const selectCls = 'min-w-[140px] flex-1'
@@ -252,6 +298,30 @@ export function DespachoPage() {
             options={[
               { value: 'registrado', label: 'Registrado' },
               { value: 'anulado', label: 'Anulado' },
+            ]}
+          />
+        </div>
+        <div className={selectCls}>
+          <Select
+            label="Acopio"
+            value={acopio}
+            onChange={(e) => setAcopio(e.target.value)}
+            placeholder="Todos"
+            options={[
+              { value: 'false', label: 'Pendiente' },
+              { value: 'true', label: 'Recepcionado' },
+            ]}
+          />
+        </div>
+        <div className={selectCls}>
+          <Select
+            label="Planta"
+            value={planta}
+            onChange={(e) => setPlanta(e.target.value)}
+            placeholder="Todos"
+            options={[
+              { value: 'false', label: 'Pendiente' },
+              { value: 'true', label: 'Recepcionado' },
             ]}
           />
         </div>
@@ -383,6 +453,10 @@ export function DespachoPage() {
                       {formatFecha(g.fecha)} · {g.hora_envio}
                     </span>
                     <EstadoDespacho estado={g.estado} />
+                    <span className="mt-0.5 flex flex-wrap gap-1">
+                      <EstacionPill ok={!!g.recepcionado_acopio} label="Acopio" />
+                      <EstacionPill ok={!!g.recepcionado_planta} label="Planta" />
+                    </span>
                   </button>
                 </li>
               ))}
@@ -410,6 +484,8 @@ export function DespachoPage() {
                   <div className="flex min-w-0 items-center gap-3">
                     <h2 className="font-display text-lg font-medium text-olive-950">Detalle de despacho</h2>
                     <EstadoDespacho estado={selected.estado} />
+                    <EstacionPill ok={!!selected.recepcionado_acopio} label="Acopio" />
+                    <EstacionPill ok={!!selected.recepcionado_planta} label="Planta" />
                   </div>
                   <p className="font-medium tracking-wide text-olive-800">{selected.codigo}</p>
                 </div>
@@ -483,6 +559,12 @@ export function DespachoPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-sand-50 px-5 py-3 text-xs text-muted">
                   <span>
                     Estado: <span className="font-medium text-olive-900 capitalize">{selected.estado}</span>
+                    {selected.recepcionado_acopio_at
+                      ? ` · Acopio ${formatDateTime(selected.recepcionado_acopio_at)}`
+                      : ''}
+                    {selected.recepcionado_planta_at
+                      ? ` · Planta ${formatDateTime(selected.recepcionado_planta_at)}`
+                      : ''}
                   </span>
                   <span>
                     Registrado por {selected.usuario_nombre} · {formatDateTime(selected.created_at)}

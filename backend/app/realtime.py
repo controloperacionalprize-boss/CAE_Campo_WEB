@@ -22,7 +22,7 @@ class EventHub:
         self._loop = loop
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=64)
         self._subs.add(queue)
         return queue
 

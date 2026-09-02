@@ -26,6 +26,7 @@ def resolve_usuario(cur, *, usuario_id: int | None, usuario_dni: str | None) -> 
             skip=0,
             limit=1,
             order="id",
+            with_count=False,
         )
         if not rows:
             raise HTTPException(status_code=404, detail="No se encontró el usuario")
@@ -129,15 +130,15 @@ def resolve_sesion_movil(cur, payload: S.GuiaIngresoIn, snap_u: dict) -> dict:
         filtros: dict = {"activo": True}
         if payload.fundo_id is not None:
             filtros["fundo_id"] = payload.fundo_id
-        rows, _ = list_rows(cur, "grupo", filters=filtros, skip=0, limit=50, order="id")
+        rows, _ = list_rows(cur, "grupo", filters=filtros, skip=0, limit=50, order="id", with_count=False)
         if not rows and "fundo_id" in filtros:
-            rows, _ = list_rows(cur, "grupo", filters={"activo": True}, skip=0, limit=50, order="id")
+            rows, _ = list_rows(cur, "grupo", filters={"activo": True}, skip=0, limit=50, order="id", with_count=False)
         grupo = _uno_por_campo(rows, "nombre", payload.grupo, "El grupo indicado no existe")
 
     if payload.fundo_id is not None:
         fundo = get_row(cur, "fundo", "id", payload.fundo_id)
     elif payload.fundo:
-        rows, _ = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=50, order="id")
+        rows, _ = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=50, order="id", with_count=False)
         fundo = _uno_por_campo(rows, "nombre", payload.fundo, "El fundo indicado no existe")
 
     if grupo:
@@ -156,6 +157,7 @@ def _lotes_del_turno(cur, turno_id: int, lote: str) -> list:
         skip=0,
         limit=20,
         order="id",
+        with_count=False,
     )
     if lotes:
         return lotes
@@ -166,6 +168,7 @@ def _lotes_del_turno(cur, turno_id: int, lote: str) -> list:
         skip=0,
         limit=500,
         order="codigo",
+        with_count=False,
     )
     wanted = _norm(lote)
     return [r for r in lotes if _norm(r.get("codigo")) == wanted]
@@ -175,7 +178,7 @@ def resolve_lote_movil(cur, *, modulo: str, turno: str, lote: str, fundo_id: int
     filtros_mod: dict = {"codigo": modulo.strip().upper(), "activo": True}
     if fundo_id is not None:
         filtros_mod["fundo_id"] = fundo_id
-    modulos, _ = list_rows(cur, "modulo", filters=filtros_mod, skip=0, limit=50, order="id")
+    modulos, _ = list_rows(cur, "modulo", filters=filtros_mod, skip=0, limit=50, order="id", with_count=False)
     if not modulos:
         detalle = "en ese fundo" if fundo_id is not None else ""
         raise HTTPException(
@@ -192,6 +195,7 @@ def resolve_lote_movil(cur, *, modulo: str, turno: str, lote: str, fundo_id: int
             skip=0,
             limit=20,
             order="id",
+            with_count=False,
         )
         turnos = [t for t in turnos if _norm(t.get("codigo")) == _norm(turno)]
         for tur in turnos:
@@ -218,9 +222,9 @@ def resolve_lote_movil(cur, *, modulo: str, turno: str, lote: str, fundo_id: int
 
 def resolve_vehiculo_placa(cur, placa: str) -> dict:
     wanted = placa.strip().upper()
-    rows, _ = list_rows(cur, "vehiculo", filters={"placa": wanted, "activo": True}, skip=0, limit=5, order="id")
+    rows, _ = list_rows(cur, "vehiculo", filters={"placa": wanted, "activo": True}, skip=0, limit=5, order="id", with_count=False)
     if not rows:
-        rows, _ = list_rows(cur, "vehiculo", filters={"placa": wanted}, skip=0, limit=5, order="id")
+        rows, _ = list_rows(cur, "vehiculo", filters={"placa": wanted}, skip=0, limit=5, order="id", with_count=False)
     if not rows:
         raise HTTPException(status_code=400, detail="No hay un vehículo activo con esa placa")
     return snapshot_vehiculo(cur, rows[0]["id"])
@@ -328,6 +332,13 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
 def parchear(cur, item_id: int, payload: S.GuiaIngresoPatch) -> dict:
     current = get_row(cur, "guia_ingreso", "id", item_id)
     data = payload.model_dump(exclude_unset=True)
+    if _guia_ya_es_historica(cur, current):
+        extra = [k for k in data if k != "estado"]
+        if extra:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede modificar una guía ya recepcionada o asignada a un viaje",
+            )
     if "vehiculo_id" in data and data["vehiculo_id"] is not None:
         data.update(snapshot_vehiculo(cur, data["vehiculo_id"]))
     if "tipo_producto" in data and data["tipo_producto"]:
@@ -342,6 +353,113 @@ def parchear(cur, item_id: int, payload: S.GuiaIngresoPatch) -> dict:
     if any(k in data for k in ("jabas_completas", "jabas_incompletas", "jarras_jabas", "jarras_extras")):
         data.update(_totales(jabas_c, jabas_i, jarras_j, jarras_e))
 
+    if data.get("estado") == "anulado":
+        _assert_se_puede_anular(cur, current)
+
     row = update_row(cur, "guia_ingreso", "id", item_id, data)
     return serialize_guia(row)
+
+
+def _guia_en_algun_viaje(cur, guia_id: int) -> bool:
+    cur.execute(
+        "SELECT 1 FROM viaje_detalle WHERE guia_ingreso_id = %s LIMIT 1",
+        (guia_id,),
+    )
+    return cur.fetchone() is not None
+
+
+def _guia_ya_es_historica(cur, guia: dict) -> bool:
+    if guia.get("recepcionado_acopio") or guia.get("recepcionado_planta"):
+        return True
+    return _guia_en_algun_viaje(cur, guia["id"])
+
+
+def _viaje_vigente_de_guia(cur, guia_id: int) -> dict | None:
+    cur.execute(
+        """
+        SELECT v.id, v.codigo, v.estado
+        FROM viaje_detalle vd
+        JOIN viaje v ON v.id = vd.viaje_id
+        WHERE vd.guia_ingreso_id = %s AND v.estado <> 'anulado'
+        ORDER BY v.id
+        LIMIT 1
+        """,
+        (guia_id,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _assert_se_puede_anular(cur, guia: dict) -> None:
+    if guia.get("recepcionado_planta"):
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede anular una guía ya registrada en planta",
+        )
+    vigente = _viaje_vigente_de_guia(cur, guia["id"])
+    if vigente:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede anular la guía: está en el viaje {vigente['codigo']}",
+        )
+
+
+def recepcionar_acopio(cur, item_id: int) -> dict:
+    guia = get_row(cur, "guia_ingreso", "id", item_id)
+    if (guia.get("estado") or "").lower() == "anulado":
+        raise HTTPException(status_code=400, detail="La guía está anulada")
+    cur.execute(
+        """
+        UPDATE guia_ingreso
+        SET recepcionado_acopio = TRUE, recepcionado_acopio_at = now(), updated_at = now()
+        WHERE id = %s AND recepcionado_acopio = FALSE AND estado <> 'anulado'
+        RETURNING *
+        """,
+        (item_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        if guia.get("recepcionado_acopio"):
+            raise HTTPException(status_code=409, detail="Ya fue recepcionada en acopio")
+        raise HTTPException(status_code=400, detail="No se pudo recepcionar la guía en acopio")
+    return serialize_guia(dict(row))
+
+
+def recepcionar_planta(cur, item_id: int) -> dict:
+    guia = get_row(cur, "guia_ingreso", "id", item_id)
+    codigo = guia.get("codigo") or item_id
+    if (guia.get("estado") or "").lower() == "anulado":
+        raise HTTPException(status_code=400, detail="La guía está anulada")
+    if not guia.get("recepcionado_acopio"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"La guía {codigo} no ha sido recepcionada en acopio",
+        )
+    if guia.get("recepcionado_planta"):
+        raise HTTPException(status_code=409, detail="Ya fue registrada en planta")
+    vigente = _viaje_vigente_de_guia(cur, item_id)
+    if not vigente:
+        raise HTTPException(status_code=400, detail="La guía no pertenece a un viaje")
+    if vigente["estado"] not in {"finalizado", "recepcionado"}:
+        raise HTTPException(
+            status_code=400,
+            detail="La guía debe estar en un viaje finalizado para recepcionarla en planta",
+        )
+    cur.execute(
+        """
+        UPDATE guia_ingreso
+        SET recepcionado_planta = TRUE, recepcionado_planta_at = now(), updated_at = now()
+        WHERE id = %s
+          AND recepcionado_planta = FALSE
+          AND recepcionado_acopio = TRUE
+          AND estado <> 'anulado'
+        RETURNING *
+        """,
+        (item_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=409, detail="Ya fue registrada en planta")
+    return serialize_guia(dict(row))
+
 

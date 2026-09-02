@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import HTTPException
 
 from . import schemas as S
-from .crud import get_row, insert_row, list_rows, update_row
+from .crud import get_row, get_row_for_update, insert_row, list_rows, update_row
 
 
 def _require_activo(row: dict, mensaje: str) -> None:
@@ -84,6 +84,7 @@ def _load_detalles(cur, viaje_id: int) -> list[dict]:
         skip=0,
         limit=1000,
         order="id",
+        with_count=False,
     )
     return [dict(r) for r in rows]
 
@@ -96,6 +97,7 @@ def _load_croquis(cur, viaje_id: int) -> dict | None:
         skip=0,
         limit=1,
         order="id",
+        with_count=False,
     )
     if not rows:
         return None
@@ -107,6 +109,7 @@ def _load_croquis(cur, viaje_id: int) -> dict | None:
         skip=0,
         limit=1000,
         order="orden",
+        with_count=False,
     )
     return serialize_croquis(croquis, [dict(p) for p in pallets])
 
@@ -119,6 +122,7 @@ def _load_grr(cur, viaje_id: int) -> dict | None:
         skip=0,
         limit=1,
         order="id",
+        with_count=False,
     )
     if not rows:
         return None
@@ -130,6 +134,7 @@ def _load_grr(cur, viaje_id: int) -> dict | None:
         skip=0,
         limit=1000,
         order="orden",
+        with_count=False,
     )
     return serialize_grr(grr, [dict(d) for d in detalle])
 
@@ -219,8 +224,43 @@ def detalle_viaje(cur, viaje_id: int) -> dict:
 
 
 def parchear_viaje(cur, viaje_id: int, payload: S.ViajePatch) -> dict:
-    get_viaje(cur, viaje_id)
-    row = update_row(cur, "viaje", "id", viaje_id, {"estado": payload.estado})
+    viaje = get_viaje(cur, viaje_id)
+    actual = (viaje.get("estado") or "").lower()
+    destino = payload.estado
+    if destino == actual:
+        return serialize_viaje(viaje)
+    if destino == "recepcionado":
+        raise HTTPException(
+            status_code=400,
+            detail="El viaje solo se marca recepcionado al escanear la GRR en planta",
+        )
+    if actual != "en_proceso":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se puede cambiar el estado de un viaje en proceso",
+        )
+    if destino == "finalizado":
+        if not _load_detalles(cur, viaje_id):
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede finalizar un viaje sin guías de ingreso",
+            )
+        if _load_croquis(cur, viaje_id) is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede finalizar un viaje sin croquis",
+            )
+        if _load_grr(cur, viaje_id) is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede finalizar un viaje sin GRR",
+            )
+    elif destino != "anulado":
+        raise HTTPException(
+            status_code=400,
+            detail="El estado del viaje debe ser en_proceso, finalizado, recepcionado o anulado",
+        )
+    row = update_row(cur, "viaje", "id", viaje_id, {"estado": destino})
     return serialize_viaje(row)
 
 
@@ -237,41 +277,49 @@ def _ids_unicos(ids: list[int]) -> list[int]:
 def agregar_detalle(cur, viaje_id: int, payload: S.ViajeDetalleIn) -> list[dict]:
     viaje = get_viaje(cur, viaje_id)
     require_en_proceso(viaje)
-    ids = _ids_unicos(payload.guia_ingreso_ids)
+    ids = sorted(_ids_unicos(payload.guia_ingreso_ids))
     if not ids:
         raise HTTPException(status_code=400, detail="Indique al menos una guía de ingreso")
 
-    cur.execute(
-        """
-        SELECT vd.guia_ingreso_id, v.id AS viaje_id, v.codigo, v.estado
-        FROM viaje_detalle vd
-        JOIN viaje v ON v.id = vd.viaje_id
-        WHERE vd.guia_ingreso_id = ANY(%s)
-          AND v.estado <> 'anulado'
-        """,
-        (ids,),
-    )
-    ocupadas = list(cur.fetchall())
-    if ocupadas:
-        misma = next((r for r in ocupadas if r["viaje_id"] == viaje_id), None)
-        if misma:
-            raise HTTPException(
-                status_code=409,
-                detail="Una o más guías ya están en este viaje",
-            )
-        codigo = ocupadas[0]["codigo"]
-        raise HTTPException(
-            status_code=409,
-            detail=f"Una o más guías ya están en el viaje activo {codigo}",
-        )
-
     creados: list[dict] = []
     for guia_id in ids:
-        guia = get_row(cur, "guia_ingreso", "id", guia_id)
+        guia = get_row_for_update(cur, "guia_ingreso", "id", guia_id)
+        codigo = guia.get("codigo") or guia_id
         if (guia.get("estado") or "").lower() == "anulado":
             raise HTTPException(
                 status_code=400,
-                detail=f"La guía {guia.get('codigo') or guia_id} está anulada",
+                detail=f"La guía {codigo} está anulada",
+            )
+        if not guia.get("recepcionado_acopio"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"La guía {codigo} no ha sido recepcionada en acopio",
+            )
+        if guia.get("recepcionado_planta"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"La guía {codigo} ya fue registrada en planta",
+            )
+        cur.execute(
+            """
+            SELECT v.id AS viaje_id, v.codigo, v.estado
+            FROM viaje_detalle vd
+            JOIN viaje v ON v.id = vd.viaje_id
+            WHERE vd.guia_ingreso_id = %s AND v.estado <> 'anulado'
+            LIMIT 1
+            """,
+            (guia_id,),
+        )
+        ocupada = cur.fetchone()
+        if ocupada:
+            if ocupada["viaje_id"] == viaje_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"La guía {codigo} ya está en este viaje",
+                )
+            raise HTTPException(
+                status_code=409,
+                detail=f"La guía {codigo} ya está en el viaje activo {ocupada['codigo']}",
             )
         row = insert_row(
             cur,
@@ -413,6 +461,7 @@ def _pallets_en_orden(cur, croquis_id: int) -> list[dict]:
         skip=0,
         limit=1000,
         order="orden",
+        with_count=False,
     )
     nested = _nest_pallets([dict(p) for p in pallets])
     ordered: list[dict] = []
@@ -485,3 +534,49 @@ def obtener_grr(cur, viaje_id: int) -> dict:
     if grr is None:
         raise HTTPException(status_code=404, detail="No se encontró la GRR")
     return grr
+
+
+def recepcionar_grr(cur, viaje_id: int) -> dict:
+    viaje = get_viaje(cur, viaje_id)
+    estado = (viaje.get("estado") or "").lower()
+    grr = _load_grr(cur, viaje_id)
+    if grr is None:
+        raise HTTPException(status_code=400, detail="El viaje no tiene GRR")
+    if (grr.get("estado") or "").lower() == "anulado":
+        raise HTTPException(status_code=400, detail="La GRR está anulada")
+    if grr.get("recepcionado"):
+        raise HTTPException(status_code=409, detail="La GRR ya fue recepcionada")
+    if estado != "finalizado":
+        raise HTTPException(
+            status_code=400,
+            detail="El viaje debe estar finalizado para recepcionar la GRR",
+        )
+    cur.execute(
+        """
+        UPDATE grr
+        SET recepcionado = TRUE, recepcionado_at = now(), updated_at = now()
+        WHERE viaje_id = %s AND recepcionado = FALSE AND estado <> 'anulado'
+        RETURNING id
+        """,
+        (viaje_id,),
+    )
+    if not cur.fetchone():
+        raise HTTPException(status_code=409, detail="La GRR ya fue recepcionada")
+    cur.execute(
+        """
+        UPDATE viaje
+        SET estado = 'recepcionado', updated_at = now()
+        WHERE id = %s AND estado = 'finalizado'
+        """,
+        (viaje_id,),
+    )
+    if cur.rowcount == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El viaje debe estar finalizado para recepcionar la GRR",
+        )
+    loaded = _load_grr(cur, viaje_id)
+    if loaded is None:
+        raise HTTPException(status_code=500, detail="No se pudo leer la GRR recién recepcionada")
+    return loaded
+

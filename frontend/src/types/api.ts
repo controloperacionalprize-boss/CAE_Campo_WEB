@@ -165,6 +165,10 @@ export type GuiaIngreso = {
   vehiculo_id: number
   placa: string
   estado: string
+  recepcionado_acopio: boolean
+  recepcionado_acopio_at: string | null
+  recepcionado_planta: boolean
+  recepcionado_planta_at: string | null
   created_at: string
   updated_at: string
 }

@@ -429,6 +429,10 @@ class GuiaIngresoOut(ORMModel):
     vehiculo_id: int
     placa: str
     estado: str
+    recepcionado_acopio: bool = False
+    recepcionado_acopio_at: datetime | None = None
+    recepcionado_planta: bool = False
+    recepcionado_planta_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -568,7 +572,7 @@ class GuiaContextoOut(BaseModel):
 
 
 TIPOS_VIAJE = ("directo", "agrupado")
-ESTADOS_VIAJE = ("en_proceso", "finalizado", "anulado")
+ESTADOS_VIAJE = ("en_proceso", "finalizado", "recepcionado", "anulado")
 
 
 def _tipo_viaje_ok(v: object) -> str:
@@ -582,10 +586,10 @@ def _tipo_viaje_ok(v: object) -> str:
 
 def _estado_viaje_ok(v: object) -> str:
     if not isinstance(v, str):
-        raise ValueError("El estado del viaje debe ser en_proceso, finalizado o anulado")
+        raise ValueError("El estado del viaje debe ser en_proceso, finalizado, recepcionado o anulado")
     cleaned = v.strip().lower()
     if cleaned not in ESTADOS_VIAJE:
-        raise ValueError("El estado del viaje debe ser en_proceso, finalizado o anulado")
+        raise ValueError("El estado del viaje debe ser en_proceso, finalizado, recepcionado o anulado")
     return cleaned
 
 
@@ -826,6 +830,8 @@ class GrrOut(ORMModel):
     total_jarras: int
     total_jabas: int
     estado: str
+    recepcionado: bool = False
+    recepcionado_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     detalle_carga: list[GrrDetalleOut] = Field(default_factory=list)

@@ -6,7 +6,14 @@ from fastapi import APIRouter, Query
 from .. import schemas as S
 from ..crud import get_row, list_rows
 from ..db import get_conn
-from ..guia_ingreso import contexto, crear, parchear, serialize_guia
+from ..guia_ingreso import (
+    contexto,
+    crear,
+    parchear,
+    recepcionar_acopio,
+    recepcionar_planta,
+    serialize_guia,
+)
 from ..realtime import publish_guia
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
@@ -48,6 +55,8 @@ def list_guias(
     lote_id: int | None = None,
     vehiculo_id: int | None = None,
     estado: Annotated[str | None, Query(max_length=20)] = None,
+    recepcionado_acopio: bool | None = None,
+    recepcionado_planta: bool | None = None,
 ):
     with get_conn(write=False) as conn:
         rows, total = list_rows(
@@ -61,6 +70,8 @@ def list_guias(
                 "lote_id": lote_id,
                 "vehiculo_id": vehiculo_id,
                 "estado": estado.strip().lower() if estado else None,
+                "recepcionado_acopio": recepcionado_acopio,
+                "recepcionado_planta": recepcionado_planta,
             },
             q=q,
             skip=skip,
@@ -90,5 +101,21 @@ def create_guia(payload: S.GuiaIngresoIn):
 def patch_guia(item_id: int, payload: S.GuiaIngresoPatch):
     with get_conn() as conn:
         row = parchear(conn.cursor(), item_id, payload)
+    publish_guia("guia.updated", row)
+    return row
+
+
+@router.patch("/guias-ingreso/{item_id}/recepcionar-acopio", response_model=S.GuiaIngresoOut)
+def patch_recepcionar_acopio(item_id: int):
+    with get_conn() as conn:
+        row = recepcionar_acopio(conn.cursor(), item_id)
+    publish_guia("guia.updated", row)
+    return row
+
+
+@router.patch("/guias-ingreso/{item_id}/recepcionar-planta", response_model=S.GuiaIngresoOut)
+def patch_recepcionar_planta(item_id: int):
+    with get_conn() as conn:
+        row = recepcionar_planta(conn.cursor(), item_id)
     publish_guia("guia.updated", row)
     return row
