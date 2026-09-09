@@ -202,3 +202,145 @@ export type GuiaIngreso = {
   created_at: string
   updated_at: string
 }
+
+export type Viaje = {
+  id: number
+  codigo: string
+  tipo_viaje: string
+  conductor_id: number | null
+  conductor_nombre: string
+  vehiculo_id: number | null
+  placa: string
+  kia_origen: string
+  kia_destino: string
+  observacion: string
+  estado: string
+  usuario_id: number | null
+  fecha: string
+  created_at: string
+  updated_at: string
+  grr_numero?: string
+  grr_recepcionado?: boolean
+}
+
+export type ViajeDetalle = {
+  id: number
+  viaje_id: number
+  guia_ingreso_id: number
+  modulo: string
+  turno: string
+  lote: string
+  jabas_completas: number
+  jabas_incompletas: number
+  jarras: number
+  created_at: string
+  guia_codigo: string
+  fundo: string
+  jarras_jabas: number
+  jarras_extras: number
+  recepcionado_acopio: boolean
+  recepcionado_planta: boolean
+}
+
+export type CroquisLinea = {
+  id: number
+  croquis_id: number
+  nombre: string
+  orden: number
+  modulo: string
+  turno: string
+  variedad: string
+  jarras: number
+  jabas: number
+  es_continuacion: boolean
+  pallet_padre_id: number | null
+  continuaciones?: CroquisLinea[]
+}
+
+export type Croquis = {
+  id: number
+  viaje_id: number
+  fecha: string
+  placa: string
+  punto_partida: string
+  punto_llegada: string
+  motivo_traslado: string
+  hora_salida: string
+  total_jarras: number
+  total_jabas: number
+  total_pallets: number
+  temperatura: number | null
+  pallets: CroquisLinea[]
+}
+
+export type GrrDetalle = {
+  id: number
+  grr_id: number
+  pallet: string
+  modulo: string
+  turno: string
+  variedad: string
+  jarras: number
+  jabas: number
+  orden: number
+}
+
+export type Grr = {
+  id: number
+  viaje_id: number
+  numero: string
+  fecha_emision: string
+  remitente: string
+  destinatario: string
+  motivo_traslado: string
+  placa: string
+  punto_partida: string
+  punto_llegada: string
+  total_jarras: number
+  total_jabas: number
+  estado: string
+  recepcionado: boolean
+  recepcionado_at: string | null
+  conductor_nombre?: string
+  detalle_carga: GrrDetalle[]
+}
+
+export type ViajeCompleto = Viaje & {
+  detalle: ViajeDetalle[]
+  croquis: Croquis | null
+  grr: Grr | null
+}
+
+export type ReporteDiario = {
+  fecha: string
+  filas: Array<{ fundo: string; modulo: string; turno: string; guias: number; jabas: number; jarras: number }>
+  total_guias: number
+  total_jabas: number
+  total_jarras: number
+}
+
+export type ReporteRango = {
+  desde: string
+  hasta: string
+  agrupar: string
+  por_fecha: Array<{ fecha: string; guias: number; jabas: number; jarras: number }>
+  por_grupo: Array<{ label: string; guias: number; jabas: number; jarras: number }>
+  total_guias: number
+  total_jabas: number
+  total_jarras: number
+}
+
+export type ReporteViajes = {
+  desde: string
+  hasta: string
+  por_estado: Array<{ estado: string; count: number }>
+  total: number
+  minutos_promedio_ciclo: number | null
+}
+
+export type ReporteVehiculos = {
+  desde: string
+  hasta: string
+  filas: Array<{ placa: string; viajes: number; recepcionados: number }>
+  total_viajes: number
+}

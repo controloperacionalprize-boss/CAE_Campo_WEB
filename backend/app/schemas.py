@@ -455,8 +455,6 @@ class GuiaIngresoIn(BaseModel):
     codigo: str = Field(min_length=1, max_length=24)
     usuario_id: int | None = None
     usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
-    grupo_id: int | None = None
-    fundo_id: int | None = None
     fecha: date | None = None
     hora_envio: time | None = None
     grupo_id: int | None = None
@@ -665,6 +663,8 @@ class ViajeOut(ORMModel):
     fecha: date
     created_at: datetime
     updated_at: datetime
+    grr_numero: str = ""
+    grr_recepcionado: bool = False
 
     @field_serializer("fecha")
     def _fecha(self, v: date) -> str:
@@ -719,6 +719,12 @@ class ViajeDetalleOut(ORMModel):
     jabas_incompletas: int
     jarras: int
     created_at: datetime
+    guia_codigo: str = ""
+    fundo: str = ""
+    jarras_jabas: int = 0
+    jarras_extras: int = 0
+    recepcionado_acopio: bool = False
+    recepcionado_planta: bool = False
 
 
 class ViajeDetalleIn(BaseModel):
@@ -901,3 +907,92 @@ class ViajeCompletoOut(ViajeOut):
     detalle: list[ViajeDetalleOut] = Field(default_factory=list)
     croquis: CroquisOut | None = None
     grr: GrrOut | None = None
+
+
+class ReporteDiarioFila(BaseModel):
+    fundo: str
+    modulo: str
+    turno: str
+    guias: int
+    jabas: int
+    jarras: int
+
+
+class ReporteDiarioOut(BaseModel):
+    fecha: date
+    filas: list[ReporteDiarioFila]
+    total_guias: int
+    total_jabas: int
+    total_jarras: int
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ReportePuntoFecha(BaseModel):
+    fecha: date
+    guias: int
+    jabas: int
+    jarras: int
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ReporteGrupo(BaseModel):
+    label: str
+    guias: int
+    jabas: int
+    jarras: int
+
+
+class ReporteRangoOut(BaseModel):
+    desde: date
+    hasta: date
+    agrupar: str
+    por_fecha: list[ReportePuntoFecha]
+    por_grupo: list[ReporteGrupo]
+    total_guias: int
+    total_jabas: int
+    total_jarras: int
+
+    @field_serializer("desde", "hasta")
+    def _rango(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ReporteViajeEstado(BaseModel):
+    estado: str
+    count: int
+
+
+class ReporteViajesOut(BaseModel):
+    desde: date
+    hasta: date
+    por_estado: list[ReporteViajeEstado]
+    total: int
+    minutos_promedio_ciclo: float | None = None
+
+    @field_serializer("desde", "hasta")
+    def _rango(self, v: date) -> str:
+        return v.isoformat()
+
+
+class ReporteVehiculoFila(BaseModel):
+    placa: str
+    viajes: int
+    recepcionados: int
+
+
+class ReporteVehiculosOut(BaseModel):
+    desde: date
+    hasta: date
+    filas: list[ReporteVehiculoFila]
+    total_viajes: int
+
+    @field_serializer("desde", "hasta")
+    def _rango(self, v: date) -> str:
+        return v.isoformat()
+

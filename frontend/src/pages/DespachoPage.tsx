@@ -13,7 +13,7 @@ import {
 import { Input, SearchInput, Select } from '../components/ui/Form'
 import { listPage, isAbortError } from '../lib/api'
 import { applyGuiaOnPage, pruneKnownGuias, sortGuiasByCodigoDesc } from '../lib/guiaLive'
-import { LiveStatusBadge, useOnGuiaLive } from '../context/LiveEventsContext'
+import { useOnGuiaLive } from '../context/LiveEventsContext'
 import { cn } from '../lib/utils'
 import { useDebounce } from '../hooks/useDebounce'
 import { Pagination } from '../components/ui/Table'
@@ -64,6 +64,11 @@ function formatDateTime(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function joinLine(parts: Array<string | null | undefined>) {
+  const text = parts.map((p) => (p ?? '').trim()).filter(Boolean).join(' · ')
+  return text || null
 }
 
 function formatHa(value: number | string) {
@@ -291,10 +296,7 @@ export function DespachoPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Despacho' }]} />
-        <LiveStatusBadge className="mb-3" />
-      </div>
+      <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Despacho' }]} />
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
@@ -428,7 +430,7 @@ export function DespachoPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
           <Card padding="none" className="flex flex-col">
             <div className="border-b border-line px-4 py-3">
               <CardHeader
@@ -437,7 +439,10 @@ export function DespachoPage() {
               />
             </div>
             <ul className="flex-1 divide-y divide-line overflow-y-auto">
-              {items.map((g) => (
+              {items.map((g) => {
+                const ubicacion = joinLine([g.fundo, g.modulo, g.turno, g.lote])
+                const producto = joinLine([g.tipo_producto, g.envase_principal])
+                return (
                 <li key={g.id}>
                   <button
                     type="button"
@@ -461,6 +466,8 @@ export function DespachoPage() {
                     <span className="text-xs text-muted">
                       {formatFecha(g.fecha)} · {g.hora_envio}
                     </span>
+                    {ubicacion && <span className="truncate text-xs text-muted">{ubicacion}</span>}
+                    {producto && <span className="truncate text-xs text-olive-800">{producto}</span>}
                     <EstadoDespacho estado={g.estado} />
                     <span className="mt-0.5 flex flex-wrap gap-1">
                       <EstacionPill ok={!!g.recepcionado_acopio} label="Acopio" />
@@ -468,7 +475,8 @@ export function DespachoPage() {
                     </span>
                   </button>
                 </li>
-              ))}
+                )
+              })}
             </ul>
             <div className="border-t border-line px-3 py-2">
               <Pagination

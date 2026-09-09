@@ -8,8 +8,7 @@ from ..realtime import hub
 
 router = APIRouter(prefix="/api/v1", tags=["eventos"])
 
-KEEPALIVE_SEC = 20
-STREAM_MAX_SEC = 45
+KEEPALIVE_SEC = 15
 
 
 @router.get("/eventos")
@@ -18,12 +17,9 @@ async def stream_eventos():
 
     async def gen():
         queue = hub.subscribe()
-        started = asyncio.get_running_loop().time()
         try:
             yield 'event: ready\ndata: {"ok":true}\n\n'
             while True:
-                if asyncio.get_running_loop().time() - started >= STREAM_MAX_SEC:
-                    break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_SEC)
                 except asyncio.TimeoutError:

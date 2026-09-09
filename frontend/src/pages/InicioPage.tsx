@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { useOnGuiaLive } from '../context/LiveEventsContext'
+import { useOnLiveEvent } from '../context/LiveEventsContext'
 import { apiGet, isAbortError } from '../lib/api'
 import { cn, formatFechaLarga } from '../lib/utils'
 import { Button } from '../components/ui/Button'
@@ -158,11 +158,15 @@ export function InicioPage() {
     return () => ac.abort()
   }, [fecha, reloadTick])
 
-  useOnGuiaLive((event) => {
-    const g = event.guia
+  useOnLiveEvent((event) => {
     const f = fechaRef.current
-    if (g.fecha === f || g.fecha === addDays(f, -1)) {
-      void loadSilentRef.current()
+    if (event.type === 'guia.created' || event.type === 'guia.updated') {
+      const g = event.guia
+      if (g.fecha === f || g.fecha === addDays(f, -1)) void loadSilentRef.current()
+      return
+    }
+    if (event.type === 'viaje.created' || event.type === 'viaje.updated') {
+      if (event.viaje.fecha === f) void loadSilentRef.current()
     }
   })
 

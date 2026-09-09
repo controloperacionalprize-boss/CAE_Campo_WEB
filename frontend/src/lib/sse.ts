@@ -1,5 +1,5 @@
 import { API_BASE, apiHeaders, isAbortError } from './api'
-import type { GuiaIngreso } from '../types/api'
+import type { GuiaIngreso, Viaje } from '../types/api'
 
 export type LiveStatus = 'connecting' | 'live' | 'disconnected'
 
@@ -7,6 +7,13 @@ export type GuiaLiveEvent = {
   type: 'guia.created' | 'guia.updated'
   guia: GuiaIngreso
 }
+
+export type ViajeLiveEvent = {
+  type: 'viaje.created' | 'viaje.updated'
+  viaje: Viaje
+}
+
+export type LiveEvent = GuiaLiveEvent | ViajeLiveEvent
 
 function eventosUrl() {
   const base = API_BASE || window.location.origin
@@ -41,21 +48,26 @@ function parseSseBlock(block: string): { event: string; data: string } | null {
   return { event, data: dataLines.join('\n') }
 }
 
-function emitParsed(block: string, onEvent: (event: GuiaLiveEvent) => void) {
+function emitParsed(block: string, onEvent: (event: LiveEvent) => void) {
   const parsed = parseSseBlock(block)
   if (!parsed || parsed.event === 'ready') return
-  if (parsed.event !== 'guia.created' && parsed.event !== 'guia.updated') return
   try {
-    const body = JSON.parse(parsed.data) as Partial<GuiaLiveEvent>
-    if (!body.guia || typeof body.guia !== 'object') return
-    onEvent({ type: parsed.event, guia: body.guia })
+    const body = JSON.parse(parsed.data) as Record<string, unknown>
+    const type = String(body.type || parsed.event)
+    if ((type === 'guia.created' || type === 'guia.updated') && body.guia && typeof body.guia === 'object') {
+      onEvent({ type, guia: body.guia as GuiaIngreso })
+      return
+    }
+    if ((type === 'viaje.created' || type === 'viaje.updated') && body.viaje && typeof body.viaje === 'object') {
+      onEvent({ type, viaje: body.viaje as Viaje })
+    }
   } catch {
     /* frame incompleto o no JSON */
   }
 }
 
 export async function connectGuiaEvents(
-  onEvent: (event: GuiaLiveEvent) => void,
+  onEvent: (event: LiveEvent) => void,
   onStatus: (status: LiveStatus) => void,
   signal: AbortSignal,
 ): Promise<void> {

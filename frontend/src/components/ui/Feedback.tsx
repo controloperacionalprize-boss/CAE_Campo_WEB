@@ -25,6 +25,9 @@ export function EstadoDespacho({ estado }: { estado: string }) {
     completado: 'bg-success-soft text-success',
     registrado: 'bg-success-soft text-success',
     anulado: 'bg-danger-soft text-danger',
+    en_proceso: 'bg-warn-soft text-warn',
+    finalizado: 'bg-info-soft text-info',
+    recepcionado: 'bg-success-soft text-success',
   }
   const labels: Record<string, string> = {
     pendiente: 'Pendiente',
@@ -32,6 +35,9 @@ export function EstadoDespacho({ estado }: { estado: string }) {
     completado: 'Completado',
     registrado: 'Registrado',
     anulado: 'Anulado',
+    en_proceso: 'En proceso',
+    finalizado: 'Finalizado',
+    recepcionado: 'Recepcionado',
   }
   const label = labels[key] ?? estado
   return (
@@ -44,13 +50,15 @@ export function EstadoDespacho({ estado }: { estado: string }) {
       <span
         className={cn(
           'size-1.5 rounded-full',
-          key === 'registrado' || key === 'completado'
+          key === 'registrado' || key === 'completado' || key === 'recepcionado'
             ? 'bg-success'
             : key === 'anulado'
               ? 'bg-danger'
-              : key === 'pendiente'
+              : key === 'pendiente' || key === 'en_proceso'
                 ? 'bg-warn'
-                : 'bg-muted/50',
+                : key === 'finalizado'
+                  ? 'bg-info'
+                  : 'bg-muted/50',
         )}
       />
       {label}

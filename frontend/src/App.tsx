@@ -12,6 +12,9 @@ import { FundoDetallePage } from './pages/FundoDetallePage'
 import { PersonasPage } from './pages/PersonasPage'
 import { FlotaPage } from './pages/FlotaPage'
 import { DespachoPage } from './pages/DespachoPage'
+import { RecepcionPage } from './pages/RecepcionPage'
+import { ReportesPage } from './pages/ReportesPage'
+import { ViajesPage } from './pages/ViajesPage'
 
 export default function App() {
   return (
@@ -36,6 +39,9 @@ export default function App() {
                 <Route path="personas" element={<PersonasPage />} />
                 <Route path="flota" element={<FlotaPage />} />
                 <Route path="despacho" element={<DespachoPage />} />
+                <Route path="viajes" element={<ViajesPage />} />
+                <Route path="recepcion" element={<RecepcionPage />} />
+                <Route path="reportes" element={<ReportesPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -6,6 +6,7 @@ import {
   childHref,
   isNavChildActive,
   isNavGroupActive,
+  isNavSeparator,
   navigation,
   pageTitleFromNav,
   type NavEntry,
@@ -144,9 +145,17 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4" aria-label="Navegación principal">
-      {navigation.map((entry) => (
-        <NavGroup key={entry.id} entry={entry} currentTab={currentTab} onNavigate={onNavigate} />
-      ))}
+      {navigation.map((item) =>
+        isNavSeparator(item) ? (
+          <div
+            key={item.id}
+            role="separator"
+            className="mx-3 my-2.5 border-t border-olive-700/80"
+          />
+        ) : (
+          <NavGroup key={item.id} entry={item} currentTab={currentTab} onNavigate={onNavigate} />
+        ),
+      )}
     </nav>
   )
 }

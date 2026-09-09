@@ -5,12 +5,14 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .. import schemas as S
 from ..db import get_conn
+from ..realtime import publish_viaje
 from ..viajes import (
     agregar_detalle,
     crear_croquis,
     crear_grr,
     crear_viaje,
     detalle_viaje,
+    get_viaje,
     listar_detalle,
     listar_viajes,
     obtener_croquis,
@@ -27,6 +29,10 @@ router = APIRouter(prefix="/api/v1", tags=["viajes"])
 
 def _page(rows, total, skip, limit):
     return {"items": rows, "total": total, "skip": skip, "limit": limit}
+
+
+def _emit_viaje(cur, viaje_id: int) -> None:
+    publish_viaje("viaje.updated", get_viaje(cur, viaje_id))
 
 
 @router.get("/viajes")
@@ -68,7 +74,9 @@ def get_viajes(
 @router.post("/viajes", response_model=S.ViajeOut, status_code=201)
 def post_viaje(payload: S.ViajeIn):
     with get_conn() as conn:
-        return crear_viaje(conn.cursor(), payload)
+        row = crear_viaje(conn.cursor(), payload)
+        _emit_viaje(conn.cursor(), row["id"])
+    return row
 
 
 @router.get("/viajes/{viaje_id}", response_model=S.ViajeCompletoOut)
@@ -80,13 +88,17 @@ def get_viaje_detalle(viaje_id: int):
 @router.patch("/viajes/{viaje_id}", response_model=S.ViajeOut)
 def patch_viaje(viaje_id: int, payload: S.ViajePatch):
     with get_conn() as conn:
-        return parchear_viaje(conn.cursor(), viaje_id, payload)
+        row = parchear_viaje(conn.cursor(), viaje_id, payload)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return row
 
 
 @router.post("/viajes/{viaje_id}/detalle", status_code=201)
 def post_detalle(viaje_id: int, payload: S.ViajeDetalleIn):
     with get_conn() as conn:
-        return agregar_detalle(conn.cursor(), viaje_id, payload)
+        created = agregar_detalle(conn.cursor(), viaje_id, payload)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return created
 
 
 @router.get("/viajes/{viaje_id}/detalle", response_model=S.ViajeDetalleListOut)
@@ -98,13 +110,17 @@ def get_detalle(viaje_id: int):
 @router.delete("/viajes/{viaje_id}/detalle/{detalle_id}", response_model=S.ViajeDetalleOut)
 def delete_detalle(viaje_id: int, detalle_id: int):
     with get_conn() as conn:
-        return quitar_detalle(conn.cursor(), viaje_id, detalle_id)
+        row = quitar_detalle(conn.cursor(), viaje_id, detalle_id)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return row
 
 
 @router.post("/viajes/{viaje_id}/croquis", response_model=S.CroquisOut, status_code=201)
 def post_croquis(viaje_id: int, payload: S.CroquisIn):
     with get_conn() as conn:
-        return crear_croquis(conn.cursor(), viaje_id, payload)
+        row = crear_croquis(conn.cursor(), viaje_id, payload)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return row
 
 
 @router.get("/viajes/{viaje_id}/croquis", response_model=S.CroquisOut)
@@ -116,7 +132,9 @@ def get_croquis(viaje_id: int):
 @router.post("/viajes/{viaje_id}/grr", response_model=S.GrrOut, status_code=201)
 def post_grr(viaje_id: int):
     with get_conn() as conn:
-        return crear_grr(conn.cursor(), viaje_id)
+        row = crear_grr(conn.cursor(), viaje_id)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return row
 
 
 @router.get("/viajes/{viaje_id}/grr", response_model=S.GrrOut)
@@ -128,4 +146,6 @@ def get_grr(viaje_id: int):
 @router.patch("/viajes/{viaje_id}/grr/recepcionar", response_model=S.GrrOut)
 def patch_recepcionar_grr(viaje_id: int):
     with get_conn() as conn:
-        return recepcionar_grr(conn.cursor(), viaje_id)
+        row = recepcionar_grr(conn.cursor(), viaje_id)
+        _emit_viaje(conn.cursor(), viaje_id)
+    return row

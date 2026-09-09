@@ -361,6 +361,39 @@ def _where_clause(
     return where_sql, params
 
 
+def require_activo(row: dict, mensaje: str) -> None:
+    if row.get("activo") is False:
+        raise HTTPException(status_code=400, detail=mensaje)
+
+
+def exists_rows(
+    cur,
+    table: str,
+    *,
+    filters: dict[str, Any] | None = None,
+) -> bool:
+    _check_table(table)
+    where_sql, params = _where_clause(table, filters, None)
+    cur.execute(f"SELECT EXISTS(SELECT 1 FROM {table} {where_sql}) AS ok", params)
+    return bool(cur.fetchone()["ok"])
+
+
+def sum_columns(
+    cur,
+    table: str,
+    columns: list[str],
+    *,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, int]:
+    _check_table(table)
+    _check_columns(table, columns)
+    exprs = ", ".join(f"COALESCE(SUM({c}), 0) AS {c}" for c in columns)
+    where_sql, params = _where_clause(table, filters, None)
+    cur.execute(f"SELECT COUNT(*) AS n, {exprs} FROM {table} {where_sql}", params)
+    row = cur.fetchone()
+    return dict(row)
+
+
 def distinct_columns(
     cur,
     table: str,

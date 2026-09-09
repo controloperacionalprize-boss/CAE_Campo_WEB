@@ -26,7 +26,14 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cd ..
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
+```
+
+Si ya estás en `backend` (carpeta del venv), **no** uses `--app-dir backend`: esa opción busca `backend/backend/app` y falla con `No module named 'app'`. Equivalente: `uvicorn main:app --reload --host 127.0.0.1 --port 8001`.
+
+Desde la raíz del repo:
+
+```powershell
 uvicorn app.main:app --reload --app-dir backend --host 127.0.0.1 --port 8001
 ```
 

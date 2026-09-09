@@ -3,12 +3,18 @@ from datetime import date
 from fastapi import HTTPException
 
 from . import schemas as S
-from .crud import get_row, get_row_for_update, insert_row, list_rows, update_row
+from .crud import (
+    exists_rows,
+    get_row,
+    get_row_for_update,
+    insert_row,
+    list_rows,
+    require_activo,
+    sum_columns,
+    update_row,
+)
 
-
-def _require_activo(row: dict, mensaje: str) -> None:
-    if row.get("activo") is False:
-        raise HTTPException(status_code=400, detail=mensaje)
+_MAX_CHILD_ROWS = 1000
 
 
 def serialize_viaje(row: dict) -> dict:
@@ -82,11 +88,33 @@ def _load_detalles(cur, viaje_id: int) -> list[dict]:
         "viaje_detalle",
         filters={"viaje_id": viaje_id},
         skip=0,
-        limit=1000,
+        limit=_MAX_CHILD_ROWS,
         order="id",
         with_count=False,
     )
-    return [dict(r) for r in rows]
+    items = [dict(r) for r in rows]
+    ids = [r["guia_ingreso_id"] for r in items]
+    guias_by_id: dict[int, dict] = {}
+    if ids:
+        guias, _ = list_rows(
+            cur,
+            "guia_ingreso",
+            filters={"id": ids},
+            skip=0,
+            limit=_MAX_CHILD_ROWS,
+            order="id",
+            with_count=False,
+        )
+        guias_by_id = {int(g["id"]): dict(g) for g in guias}
+    for item in items:
+        guia = guias_by_id.get(int(item["guia_ingreso_id"]), {})
+        item["guia_codigo"] = guia.get("codigo") or ""
+        item["fundo"] = guia.get("fundo") or ""
+        item["jarras_jabas"] = guia.get("jarras_jabas") or 0
+        item["jarras_extras"] = guia.get("jarras_extras") or 0
+        item["recepcionado_acopio"] = bool(guia.get("recepcionado_acopio"))
+        item["recepcionado_planta"] = bool(guia.get("recepcionado_planta"))
+    return items
 
 
 def _load_croquis(cur, viaje_id: int) -> dict | None:
@@ -107,7 +135,7 @@ def _load_croquis(cur, viaje_id: int) -> dict | None:
         "croquis_pallet",
         filters={"croquis_id": croquis["id"]},
         skip=0,
-        limit=1000,
+        limit=_MAX_CHILD_ROWS,
         order="orden",
         with_count=False,
     )
@@ -132,7 +160,7 @@ def _load_grr(cur, viaje_id: int) -> dict | None:
         "grr_detalle",
         filters={"grr_id": grr["id"]},
         skip=0,
-        limit=1000,
+        limit=_MAX_CHILD_ROWS,
         order="orden",
         with_count=False,
     )
@@ -141,13 +169,13 @@ def _load_grr(cur, viaje_id: int) -> dict | None:
 
 def crear_viaje(cur, payload: S.ViajeIn) -> dict:
     usuario = get_row(cur, "usuario", "id", payload.usuario_id)
-    _require_activo(usuario, "El usuario indicado está inactivo")
+    require_activo(usuario, "El usuario indicado está inactivo")
 
     conductor_id = None
     conductor_nombre = ""
     if payload.conductor_id is not None:
         chofer = get_row(cur, "chofer", "id", payload.conductor_id)
-        _require_activo(chofer, "El chofer indicado está inactivo")
+        require_activo(chofer, "El chofer indicado está inactivo")
         conductor_id = chofer["id"]
         conductor_nombre = chofer["nombre"] or ""
 
@@ -155,7 +183,7 @@ def crear_viaje(cur, payload: S.ViajeIn) -> dict:
     placa = payload.placa or ""
     if payload.vehiculo_id is not None:
         vehiculo = get_row(cur, "vehiculo", "id", payload.vehiculo_id)
-        _require_activo(vehiculo, "El vehículo indicado está inactivo")
+        require_activo(vehiculo, "El vehículo indicado está inactivo")
         vehiculo_id = vehiculo["id"]
         if not placa:
             placa = (vehiculo["placa"] or "").strip().upper()
@@ -182,6 +210,30 @@ def crear_viaje(cur, payload: S.ViajeIn) -> dict:
     return serialize_viaje(row)
 
 
+def _attach_grr_meta(cur, viajes: list[dict]) -> list[dict]:
+    ids = [int(v["id"]) for v in viajes]
+    if not ids:
+        return viajes
+    rows, _ = list_rows(
+        cur,
+        "grr",
+        filters={"viaje_id": ids},
+        skip=0,
+        limit=_MAX_CHILD_ROWS,
+        order="id",
+        with_count=False,
+    )
+    by_id = {int(r["viaje_id"]): r for r in rows}
+    out: list[dict] = []
+    for viaje in viajes:
+        grr = by_id.get(int(viaje["id"]))
+        item = dict(viaje)
+        item["grr_numero"] = (grr.get("numero") if grr else "") or ""
+        item["grr_recepcionado"] = bool(grr.get("recepcionado")) if grr else False
+        out.append(item)
+    return out
+
+
 def listar_viajes(
     cur,
     *,
@@ -205,10 +257,10 @@ def listar_viajes(
         q=q,
         skip=skip,
         limit=limit,
-        order="fecha",
+        order="created_at",
         descending=True,
     )
-    return [serialize_viaje(r) for r in rows], total
+    return _attach_grr_meta(cur, [serialize_viaje(r) for r in rows]), total
 
 
 def detalle_viaje(cur, viaje_id: int) -> dict:
@@ -240,17 +292,17 @@ def parchear_viaje(cur, viaje_id: int, payload: S.ViajePatch) -> dict:
             detail="Solo se puede cambiar el estado de un viaje en proceso",
         )
     if destino == "finalizado":
-        if not _load_detalles(cur, viaje_id):
+        if not exists_rows(cur, "viaje_detalle", filters={"viaje_id": viaje_id}):
             raise HTTPException(
                 status_code=400,
                 detail="No se puede finalizar un viaje sin guías de ingreso",
             )
-        if _load_croquis(cur, viaje_id) is None:
+        if not exists_rows(cur, "croquis", filters={"viaje_id": viaje_id}):
             raise HTTPException(
                 status_code=400,
                 detail="No se puede finalizar un viaje sin croquis",
             )
-        if _load_grr(cur, viaje_id) is None:
+        if not exists_rows(cur, "grr", filters={"viaje_id": viaje_id}):
             raise HTTPException(
                 status_code=400,
                 detail="No se puede finalizar un viaje sin GRR",
@@ -343,15 +395,17 @@ def agregar_detalle(cur, viaje_id: int, payload: S.ViajeDetalleIn) -> list[dict]
 def listar_detalle(cur, viaje_id: int) -> dict:
     get_viaje(cur, viaje_id)
     items = _load_detalles(cur, viaje_id)
-    total_jarras = sum(int(r.get("jarras") or 0) for r in items)
-    total_jabas = sum(
-        int(r.get("jabas_completas") or 0) + int(r.get("jabas_incompletas") or 0) for r in items
+    totals = sum_columns(
+        cur,
+        "viaje_detalle",
+        ["jarras", "jabas_completas", "jabas_incompletas"],
+        filters={"viaje_id": viaje_id},
     )
     return {
         "items": [serialize_detalle(r) for r in items],
-        "total_jarras": total_jarras,
-        "total_jabas": total_jabas,
-        "total_qrs": len(items),
+        "total_jarras": int(totals["jarras"]),
+        "total_jabas": int(totals["jabas_completas"]) + int(totals["jabas_incompletas"]),
+        "total_qrs": int(totals["n"]),
     }
 
 
@@ -459,7 +513,7 @@ def _pallets_en_orden(cur, croquis_id: int) -> list[dict]:
         "croquis_pallet",
         filters={"croquis_id": croquis_id},
         skip=0,
-        limit=1000,
+        limit=_MAX_CHILD_ROWS,
         order="orden",
         with_count=False,
     )

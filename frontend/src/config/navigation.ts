@@ -5,6 +5,9 @@ import {
   Users,
   Truck,
   ClipboardList,
+  Route,
+  PackageCheck,
+  BarChart3,
 } from 'lucide-react'
 
 export type NavChild = {
@@ -23,8 +26,24 @@ export type NavEntry = {
   children?: NavChild[]
 }
 
-export const navigation: NavEntry[] = [
+export type NavSeparator = {
+  id: string
+  kind: 'separator'
+}
+
+export type NavItem = NavEntry | NavSeparator
+
+export function isNavSeparator(item: NavItem): item is NavSeparator {
+  return 'kind' in item && item.kind === 'separator'
+}
+
+export const navigation: NavItem[] = [
   { id: 'inicio', to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
+  { id: 'despacho', to: '/despacho', label: 'Despacho', icon: ClipboardList },
+  { id: 'viajes', to: '/viajes', label: 'Viajes', icon: Route },
+  { id: 'recepcion', to: '/recepcion', label: 'Recepción', icon: PackageCheck },
+  { id: 'reportes', to: '/reportes', label: 'Reportes', icon: BarChart3 },
+  { id: 'sep-maestros', kind: 'separator' },
   {
     id: 'ubicaciones',
     to: '/ubicaciones',
@@ -64,7 +83,6 @@ export const navigation: NavEntry[] = [
       { label: 'Proveedores', tab: 'proveedores' },
     ],
   },
-  { id: 'despacho', to: '/despacho', label: 'Despacho', icon: ClipboardList },
 ]
 
 export function childHref(parentTo: string, defaultTab: string | undefined, tab?: string) {
@@ -94,14 +112,15 @@ export function isNavChildActive(
 }
 
 export function pageTitleFromNav(pathname: string, tab: string | null): string {
-  for (const entry of navigation) {
-    if (!isNavGroupActive(pathname, entry)) continue
-    if (entry.children?.length) {
-      const activeTab = tab ?? entry.defaultTab ?? ''
-      const child = entry.children.find((c) => (c.tab ?? entry.defaultTab) === activeTab)
+  for (const item of navigation) {
+    if (isNavSeparator(item)) continue
+    if (!isNavGroupActive(pathname, item)) continue
+    if (item.children?.length) {
+      const activeTab = tab ?? item.defaultTab ?? ''
+      const child = item.children.find((c) => (c.tab ?? item.defaultTab) === activeTab)
       if (child) return child.label
     }
-    return entry.label
+    return item.label
   }
   if (pathname.startsWith('/ubicaciones/fundos/')) return 'Detalle de fundo'
   return 'Despacho Campo'

@@ -67,3 +67,10 @@ def publish_guia(event_type: str, guia: dict[str, Any]) -> None:
         hub.publish({"type": event_type, "guia": guia})
     except Exception:
         logger.exception("No se pudo publicar el evento en vivo")
+
+
+def publish_viaje(event_type: str, viaje: dict[str, Any]) -> None:
+    try:
+        hub.publish({"type": event_type, "viaje": viaje})
+    except Exception:
+        logger.exception("No se pudo publicar el evento de viaje")

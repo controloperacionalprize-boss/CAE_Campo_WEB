@@ -17,6 +17,7 @@ from .realtime import hub
 from .routers.eventos import router as eventos_router
 from .routers.guias import router as guias_router
 from .routers.maestros import router as maestros_router
+from .routers.reportes import router as reportes_router
 from .routers.ubicaciones import router as ubicaciones_router
 from .routers.viajes import router as viajes_router
 
@@ -84,6 +85,7 @@ app.include_router(maestros_router, dependencies=[Depends(require_api_key)])
 app.include_router(ubicaciones_router, dependencies=[Depends(require_api_key)])
 app.include_router(guias_router, dependencies=[Depends(require_api_key)])
 app.include_router(viajes_router, dependencies=[Depends(require_api_key)])
+app.include_router(reportes_router, dependencies=[Depends(require_api_key)])
 app.include_router(eventos_router, dependencies=[Depends(require_api_key)])
 
 

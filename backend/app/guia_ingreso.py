@@ -3,16 +3,11 @@ from datetime import date, datetime, timedelta
 from fastapi import HTTPException
 
 from . import schemas as S
-from .crud import distinct_columns, get_row, insert_row, list_rows, update_row
+from .crud import distinct_columns, get_row, insert_row, list_rows, require_activo, update_row
 
 
 def serialize_guia(row: dict) -> dict:
     return S.GuiaIngresoOut.model_validate(row).model_dump(mode="json")
-
-
-def _require_activo(row: dict, mensaje: str) -> None:
-    if row.get("activo") is False:
-        raise HTTPException(status_code=400, detail=mensaje)
 
 
 def resolve_usuario(cur, *, usuario_id: int | None, usuario_dni: str | None) -> dict:
@@ -36,7 +31,7 @@ def resolve_usuario(cur, *, usuario_id: int | None, usuario_dni: str | None) -> 
             status_code=400,
             detail="Indique usuario_id o usuario_dni",
         )
-    _require_activo(usuario, "El usuario indicado está inactivo")
+    require_activo(usuario, "El usuario indicado está inactivo")
     return usuario
 
 
@@ -58,13 +53,13 @@ def snapshot_usuario(cur, usuario: dict) -> dict:
 
 def snapshot_grupo(cur, grupo: dict, *, exigir_activo: bool = True) -> dict:
     if exigir_activo:
-        _require_activo(grupo, "El grupo indicado está inactivo")
+        require_activo(grupo, "El grupo indicado está inactivo")
     fundo_id = grupo.get("fundo_id")
     fundo_nombre = ""
     if fundo_id:
         fundo = get_row(cur, "fundo", "id", fundo_id)
         if exigir_activo:
-            _require_activo(fundo, "El fundo indicado está inactivo")
+            require_activo(fundo, "El fundo indicado está inactivo")
         fundo_nombre = fundo["nombre"] or ""
     return {
         "grupo_id": grupo["id"],
@@ -75,13 +70,13 @@ def snapshot_grupo(cur, grupo: dict, *, exigir_activo: bool = True) -> dict:
 
 
 def snapshot_fundo(cur, fundo: dict) -> dict:
-    _require_activo(fundo, "El fundo indicado está inactivo")
+    require_activo(fundo, "El fundo indicado está inactivo")
     return {"fundo_id": fundo["id"], "fundo": fundo["nombre"] or ""}
 
 
 def snapshot_lote(cur, lote_id: int) -> dict:
     lote = get_row(cur, "lote", "id", lote_id)
-    _require_activo(lote, "El lote indicado está inactivo")
+    require_activo(lote, "El lote indicado está inactivo")
     turno = get_row(cur, "turno", "id", lote["turno_id"])
     modulo = get_row(cur, "modulo", "id", turno["modulo_id"])
     fundo = get_row(cur, "fundo", "id", modulo["fundo_id"])
@@ -100,7 +95,7 @@ def snapshot_lote(cur, lote_id: int) -> dict:
 
 def snapshot_vehiculo(cur, vehiculo_id: int) -> dict:
     vehiculo = get_row(cur, "vehiculo", "id", vehiculo_id)
-    _require_activo(vehiculo, "El vehículo indicado está inactivo")
+    require_activo(vehiculo, "El vehículo indicado está inactivo")
     return {"vehiculo_id": vehiculo["id"], "placa": vehiculo["placa"]}
 
 
