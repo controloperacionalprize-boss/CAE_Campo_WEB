@@ -629,6 +629,19 @@ def recepcionar_grr(cur, viaje_id: int) -> dict:
             status_code=400,
             detail="El viaje debe estar finalizado para recepcionar la GRR",
         )
+    # Escanear la GRR en planta cierra el viaje: sus guías quedan recepcionadas en planta.
+    cur.execute(
+        """
+        UPDATE guia_ingreso g
+        SET recepcionado_planta = TRUE, recepcionado_planta_at = now(), updated_at = now()
+        FROM viaje_detalle vd
+        WHERE vd.guia_ingreso_id = g.id
+          AND vd.viaje_id = %s
+          AND g.recepcionado_planta = FALSE
+          AND g.estado <> 'anulado'
+        """,
+        (viaje_id,),
+    )
     loaded = _load_grr(cur, viaje_id)
     if loaded is None:
         raise HTTPException(status_code=500, detail="No se pudo leer la GRR recién recepcionada")

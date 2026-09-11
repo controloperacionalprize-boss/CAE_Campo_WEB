@@ -14,6 +14,7 @@ from ..guia_ingreso import (
     recepcionar_acopio,
     recepcionar_planta,
     resumen_dashboard,
+    saldo_ha_lote,
     serialize_guia,
 )
 from ..realtime import publish_guia
@@ -55,6 +56,13 @@ def get_contexto(
             lote_id=lote_id,
             vehiculo_id=vehiculo_id,
         )
+
+
+@router.get("/lotes/{lote_id}/saldo-ha", response_model=S.LoteSaldoHaOut)
+def get_saldo_ha_lote(lote_id: int, fecha: date | None = None):
+    """Hectáreas disponibles del lote en el día (área del maestro menos lo ya registrado)."""
+    with get_conn(write=False) as conn:
+        return saldo_ha_lote(conn.cursor(), lote_id, fecha or date.today())
 
 
 @router.get("/guias-ingreso")

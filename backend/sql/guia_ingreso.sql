@@ -47,6 +47,10 @@ CREATE INDEX IF NOT EXISTS guia_ingreso_fecha_idx ON guia_ingreso (fecha DESC, c
 CREATE INDEX IF NOT EXISTS guia_ingreso_fundo_idx ON guia_ingreso (fundo_id);
 CREATE INDEX IF NOT EXISTS guia_ingreso_usuario_idx ON guia_ingreso (usuario_id);
 CREATE INDEX IF NOT EXISTS guia_ingreso_vehiculo_idx ON guia_ingreso (vehiculo_id);
+-- Saldo diario de ha por lote: SUM(ha) de las guías vigentes del lote en la fecha.
+CREATE INDEX IF NOT EXISTS gi_lote_fecha_ha_idx
+    ON guia_ingreso (lote_id, fecha)
+    WHERE estado <> 'anulado';
 CREATE INDEX IF NOT EXISTS gi_cola_acopio_idx
     ON guia_ingreso (fecha, recepcionado_acopio, recepcionado_planta)
     WHERE estado = 'registrado';

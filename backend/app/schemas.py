@@ -425,6 +425,7 @@ class GuiaIngresoOut(ORMModel):
     jabas_totales: int
     jarras_totales: int
     ha: Decimal
+    ha_saldo: Decimal | None = None
     observacion: str
     vehiculo_id: int
     placa: str
@@ -447,12 +448,14 @@ class GuiaIngresoOut(ORMModel):
 
 class GuiaIngresoIn(BaseModel):
     """POST del móvil. El operador entra con DNI y elige grupo/fundo en la app.
-    codigo, ubicación, placa y conteos vienen del cliente; nombre y ha se completan aquí.
+    codigo, ubicación, placa, conteos y ha trabajadas vienen del cliente; nombre se completa aquí.
+    Las ha se descuentan del saldo diario del lote (compartido entre usuarios).
     """
 
     model_config = ConfigDict(extra="ignore")
 
     codigo: str = Field(min_length=1, max_length=24)
+    ha: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=4)
     usuario_id: int | None = None
     usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
     fecha: date | None = None
@@ -620,9 +623,23 @@ class GuiaContextoOut(BaseModel):
     turno: str | None = None
     lote: str | None = None
     ha: Decimal | None = None
+    ha_saldo: Decimal | None = None
     placa: str | None = None
     vehiculo_id: int | None = None
     lote_id: int | None = None
+
+
+class LoteSaldoHaOut(BaseModel):
+    lote_id: int
+    lote: str
+    fecha: date
+    area_ha: Decimal
+    ha_usada: Decimal
+    ha_saldo: Decimal
+
+    @field_serializer("fecha")
+    def _fecha(self, v: date) -> str:
+        return v.isoformat()
 
 
 TIPOS_VIAJE = ("directo", "agrupado")

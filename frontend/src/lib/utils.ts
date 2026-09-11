@@ -27,3 +27,7 @@ export function paginate<T>(items: T[], skip: number, limit: number) {
     limit,
   }
 }
+
+export function fmtNum(n: number) {
+  return n.toLocaleString('es-PE')
+}

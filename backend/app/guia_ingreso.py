@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from fastapi import HTTPException
 
@@ -242,6 +243,7 @@ def contexto(
                 "lote_id": lote["lote_id"],
                 "lote": lote["lote"],
                 "ha": lote["ha"],
+                "ha_saldo": saldo_ha_lote(cur, lote["lote_id"], date.today())["ha_saldo"],
                 "modulo": lote["modulo"],
                 "turno": lote["turno"],
             }
@@ -252,6 +254,36 @@ def contexto(
     if vehiculo_id is not None:
         data.update(snapshot_vehiculo(cur, vehiculo_id))
     return data
+
+
+def saldo_ha_lote(cur, lote_id: int, fecha: date, *, bloquear: bool = False) -> dict:
+    """Saldo diario del lote: area_ha menos las ha de sus guías vigentes de esa fecha.
+    Se reinicia solo al cambiar de día; anular una guía libera sus ha."""
+    cur.execute(
+        f"SELECT id, codigo, area_ha FROM lote WHERE id = %s{' FOR UPDATE' if bloquear else ''}",
+        (lote_id,),
+    )
+    lote = cur.fetchone()
+    if not lote:
+        raise HTTPException(status_code=404, detail="No se encontró el lote")
+    cur.execute(
+        """
+        SELECT COALESCE(SUM(ha), 0) AS usada
+        FROM guia_ingreso
+        WHERE lote_id = %s AND fecha = %s AND estado <> 'anulado'
+        """,
+        (lote_id, fecha),
+    )
+    usada = Decimal(cur.fetchone()["usada"])
+    area = Decimal(lote["area_ha"])
+    return {
+        "lote_id": lote["id"],
+        "lote": lote["codigo"],
+        "fecha": fecha,
+        "area_ha": area,
+        "ha_usada": usada,
+        "ha_saldo": max(area - usada, Decimal(0)),
+    }
 
 
 def _totales(jabas_completas: int, jabas_incompletas: int, jarras_jabas: int, jarras_extras: int) -> dict:
@@ -284,6 +316,18 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
 
     fecha = payload.fecha or date.today()
     hora = payload.hora_envio or datetime.now().time().replace(second=0, microsecond=0)
+    if payload.ha is None:
+        raise HTTPException(status_code=400, detail="Indique las hectáreas trabajadas (ha)")
+    # FOR UPDATE serializa las altas del mismo lote: dos usuarios no pueden gastar el mismo saldo.
+    saldo = saldo_ha_lote(cur, snap_l["lote_id"], fecha, bloquear=True)
+    if payload.ha > saldo["ha_saldo"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Las ha ({payload.ha}) superan el saldo del lote {saldo['lote']} "
+                f"para el {fecha.isoformat()}: quedan {saldo['ha_saldo']} de {saldo['area_ha']} ha"
+            ),
+        )
     totals = _totales(
         payload.jabas_completas,
         payload.jabas_incompletas,
@@ -306,7 +350,7 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
             "turno": snap_l["turno"],
             "lote_id": snap_l["lote_id"],
             "lote": snap_l["lote"],
-            "ha": snap_l["ha"],
+            "ha": payload.ha,
             **snap_v,
             "tipo_producto": payload.tipo_producto.upper(),
             "tipo_llenado": payload.tipo_llenado,
@@ -321,7 +365,7 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
         },
         "id",
     )
-    return serialize_guia(row)
+    return serialize_guia({**row, "ha_saldo": saldo["ha_saldo"] - payload.ha})
 
 
 def parchear(cur, item_id: int, payload: S.GuiaIngresoPatch) -> dict:
