@@ -5,13 +5,14 @@ from fastapi import APIRouter, Query
 from .. import reportes as R
 from .. import schemas as S
 from ..db import get_conn
+from ..tiempo import hoy
 
 router = APIRouter(prefix="/api/v1/reportes", tags=["reportes"])
 
 
 @router.get("/diario", response_model=S.ReporteDiarioOut)
 def get_diario(fecha: date | None = None):
-    day = fecha or date.today()
+    day = fecha or hoy()
     with get_conn(write=False) as conn:
         return R.diario(conn.cursor(), day)
 

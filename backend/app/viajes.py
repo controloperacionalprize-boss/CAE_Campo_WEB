@@ -13,6 +13,7 @@ from .crud import (
     sum_columns,
     update_row,
 )
+from .tiempo import hoy
 
 _MAX_CHILD_ROWS = 1000
 
@@ -65,7 +66,7 @@ def require_en_proceso(viaje: dict) -> None:
 def _next_monthly_code(cur, table: str, column: str, tag: str) -> str:
     if table not in {"viaje", "grr"} or column not in {"codigo", "numero"}:
         raise ValueError("Generación de código no permitida")
-    prefix = f"{tag}-{date.today():%Y-%m}-"
+    prefix = f"{tag}-{hoy():%Y-%m}-"
     cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{table}:{prefix}",))
     cur.execute(
         f"SELECT {column} AS code FROM {table} WHERE {column} LIKE %s ORDER BY {column} DESC LIMIT 1",
@@ -114,6 +115,8 @@ def _load_detalles(cur, viaje_id: int) -> list[dict]:
         item["jarras_extras"] = guia.get("jarras_extras") or 0
         item["recepcionado_acopio"] = bool(guia.get("recepcionado_acopio"))
         item["recepcionado_planta"] = bool(guia.get("recepcionado_planta"))
+        item["jarras_llegaron"] = guia.get("jarras_llegaron")
+        item["jabas_llegaron"] = guia.get("jabas_llegaron")
     return items
 
 
@@ -203,7 +206,7 @@ def crear_viaje(cur, payload: S.ViajeIn) -> dict:
             "observacion": payload.observacion or "",
             "estado": "en_proceso",
             "usuario_id": usuario["id"],
-            "fecha": date.today(),
+            "fecha": hoy(),
         },
         "id",
     )
@@ -410,14 +413,17 @@ def listar_detalle(cur, viaje_id: int) -> dict:
 
 
 def anular_viaje(cur, viaje_id: int) -> dict:
-    viaje = get_viaje(cur, viaje_id)
+    """Anulación lógica: la data operativa no se borra (trigger deny_hard_delete_operativo).
+
+    El detalle se conserva como historial; las consultas de "viaje vigente"
+    excluyen los viajes anulados, así que sus guías quedan libres para otro viaje.
+    """
+    viaje = get_row_for_update(cur, "viaje", "id", viaje_id)
+    if (viaje.get("estado") or "").lower() == "anulado":
+        raise HTTPException(status_code=409, detail="El viaje ya está anulado")
     require_en_proceso(viaje)
-    cur.execute("DELETE FROM viaje_detalle WHERE viaje_id = %s", (viaje_id,))
-    cur.execute("DELETE FROM viaje WHERE id = %s AND estado = 'en_proceso' RETURNING *", (viaje_id,))
-    row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=400, detail="No se pudo eliminar el viaje")
-    return serialize_viaje(dict(row))
+    row = update_row(cur, "viaje", "id", viaje_id, {"estado": "anulado"})
+    return serialize_viaje(row)
 
 
 def quitar_detalle(cur, viaje_id: int, detalle_id: int) -> dict:

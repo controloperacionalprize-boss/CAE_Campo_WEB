@@ -794,6 +794,8 @@ class ViajeDetalleOut(ORMModel):
     jarras_extras: int = 0
     recepcionado_acopio: bool = False
     recepcionado_planta: bool = False
+    jarras_llegaron: int | None = None
+    jabas_llegaron: int | None = None
 
 
 class ViajeDetalleIn(BaseModel):

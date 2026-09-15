@@ -82,9 +82,10 @@ def post_viaje(payload: S.ViajeIn):
 
 @router.delete("/viajes/{viaje_id}", response_model=S.ViajeOut)
 def delete_viaje(viaje_id: int):
+    """Anula un viaje en proceso (no lo borra: el historial se conserva). Sus guías quedan libres."""
     with get_conn() as conn:
         row = anular_viaje(conn.cursor(), viaje_id)
-    publish_viaje("viaje.deleted", row)
+        _emit_viaje(conn.cursor(), viaje_id)
     return row
 
 

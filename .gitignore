@@ -9,9 +9,9 @@ backend/.venv/
 backend/__pycache__/
 frontend/node_modules/
 frontend/dist/
-web/node_modules/
-web/dist/
 *.log
 .DS_Store
-backend/app/db.py
-backend/requirements.txt
+
+# Exportación de maestros con datos personales (DNI de choferes): se genera con
+# `python -m scripts.exportar_maestros` y se usa solo para cargar la base.
+backend/sql/datos_maestros.sql

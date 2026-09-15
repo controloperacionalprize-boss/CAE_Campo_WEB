@@ -29,6 +29,10 @@ export const GUIA_EXCEL_HEADERS = [
   'Fecha acopio',
   'Recepcionado planta',
   'Fecha planta',
+  'Jarras llegaron',
+  'Jabas llegaron',
+  'Diferencia jarras',
+  'Diferencia jabas',
 ]
 
 export function guiaExcelRow(g: GuiaIngreso): ExcelValue[] {
@@ -60,6 +64,10 @@ export function guiaExcelRow(g: GuiaIngreso): ExcelValue[] {
     excelFechaHora(g.recepcionado_acopio_at),
     g.recepcionado_planta,
     excelFechaHora(g.recepcionado_planta_at),
+    g.jarras_llegaron ?? null,
+    g.jabas_llegaron ?? null,
+    g.jarras_llegaron == null ? null : g.jarras_llegaron - g.jarras_totales,
+    g.jabas_llegaron == null ? null : g.jabas_llegaron - g.jabas_totales,
   ]
 }
 

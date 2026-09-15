@@ -20,6 +20,7 @@ from ..guia_ingreso import (
     serialize_guia,
 )
 from ..realtime import publish_guia
+from ..tiempo import hoy
 
 SearchQ = Annotated[str | None, Query(max_length=80)]
 TextFilter = Annotated[str | None, Query(max_length=120)]
@@ -37,7 +38,7 @@ def _clean(value: str | None) -> str | None:
 @router.get("/dashboard/resumen", response_model=S.DashboardResumenOut)
 def get_dashboard_resumen(fecha: date | None = None):
     """KPIs de despacho del día (conteos en SQL + 5 recientes). Una sola llamada."""
-    day = fecha or date.today()
+    day = fecha or hoy()
     with get_conn(write=False) as conn:
         return resumen_dashboard(conn.cursor(), day)
 
@@ -64,7 +65,7 @@ def get_contexto(
 def get_saldo_ha_lote(lote_id: int, fecha: date | None = None):
     """Hectáreas disponibles del lote en el día (área del maestro menos lo ya registrado)."""
     with get_conn(write=False) as conn:
-        return saldo_ha_lote(conn.cursor(), lote_id, fecha or date.today())
+        return saldo_ha_lote(conn.cursor(), lote_id, fecha or hoy())
 
 
 @router.get("/guias-ingreso")

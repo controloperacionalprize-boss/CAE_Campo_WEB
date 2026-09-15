@@ -171,6 +171,53 @@ function SectionTitle({ children }: { children: ReactNode }) {
   )
 }
 
+/** Conteo de llegada frente a lo despachado. Se registra desde la app móvil. */
+function LlegadaPlanta({
+  enviadas,
+  llegaron,
+}: {
+  enviadas: { jarras: number; jabas: number }
+  llegaron: { jarras?: number | null; jabas?: number | null }
+}) {
+  if (llegaron.jarras == null && llegaron.jabas == null) {
+    return (
+      <p className="rounded-lg border border-dashed border-line bg-sand-50 px-3 py-2.5 text-sm text-muted">
+        Aún no se registra el conteo de llegada.
+      </p>
+    )
+  }
+  const filas = [
+    { label: 'Jarras', enviado: enviadas.jarras, llego: llegaron.jarras },
+    { label: 'Jabas', enviado: enviadas.jabas, llego: llegaron.jabas },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {filas.map((f) => {
+        const dif = f.llego == null ? null : f.llego - f.enviado
+        return (
+          <div key={f.label} className="rounded-lg border border-line bg-sand-50 px-3 py-2.5">
+            <p className="text-[11px] text-muted">{f.label} que llegaron</p>
+            <p className="mt-0.5 font-display text-lg font-medium tabular-nums text-olive-950">
+              {f.llego ?? '—'}
+              <span className="ml-1 text-xs font-normal text-muted">de {f.enviado}</span>
+            </p>
+            {dif != null && (
+              <p
+                className={cn(
+                  'mt-0.5 text-xs font-medium tabular-nums',
+                  dif === 0 ? 'text-success' : 'text-danger',
+                )}
+              >
+                {dif === 0 ? 'Completo' : `${dif > 0 ? '+' : ''}${dif} vs despachado`}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StatBox({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-lg border border-line bg-sand-50 px-3 py-2.5">
@@ -755,6 +802,16 @@ export function DespachoPage() {
                         <StatBox label="HA trabajadas" value={formatHa(selected.ha)} />
                       </div>
                     </section>
+                    <section>
+                      <SectionTitle>Llegada a planta</SectionTitle>
+                      <LlegadaPlanta
+                        enviadas={{ jarras: selected.jarras_totales, jabas: selected.jabas_totales }}
+                        llegaron={{ jarras: selected.jarras_llegaron, jabas: selected.jabas_llegaron }}
+                      />
+                    </section>
+                  </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2">
                     <section>
                       <SectionTitle>Transporte</SectionTitle>
                       <div className="rounded-lg border border-line bg-sand-50 px-3 py-2.5">

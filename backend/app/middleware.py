@@ -1,18 +1,45 @@
+import contextvars
 import logging
+import secrets
 import time
 from collections import defaultdict
 from threading import Lock
 
-from starlette.datastructures import MutableHeaders
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import get_settings
+from .seguridad import TokenInvalido, leer_token
 
 logger = logging.getLogger("despacho")
 
+_SIN_LIMITE = {"/api/health", "/api/v1/eventos"}
 _SKIP_LOG = {"/api/health", "/api/v1/eventos"}
 _MUTATIONS = {"POST", "PUT", "PATCH", "DELETE"}
+
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_var.get()
+        return True
+
+
+def configurar_logging(nivel: str) -> None:
+    """Handler propio para el logger de la app: sin él, INFO no llega a la consola de Render."""
+    log = logging.getLogger("despacho")
+    log.setLevel(nivel.upper())
+    if not any(getattr(h, "_despacho", False) for h in log.handlers):
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s")
+        )
+        handler.addFilter(RequestIdFilter())
+        handler._despacho = True  # type: ignore[attr-defined]
+        log.addHandler(handler)
+    log.propagate = False
 
 
 class SecurityHeadersMiddleware:
@@ -37,16 +64,28 @@ class SecurityHeadersMiddleware:
                 if "text/event-stream" not in content_type:
                     headers["Cache-Control"] = "no-store"
                 if get_settings().is_production:
-                    headers["Strict-Transport-Security"] = (
-                        "max-age=31536000; includeSubDomains"
-                    )
+                    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
 
 
+def _clave_limite(scope: Scope) -> str:
+    """Sesión web → por usuario. App móvil → por IP del dispositivo (requiere --proxy-headers)."""
+    headers = Headers(scope=scope)
+    auth = headers.get("authorization") or ""
+    if auth.lower().startswith("bearer "):
+        try:
+            claims = leer_token(auth[7:].strip(), get_settings().secreto_tokens)
+            return f"u:{claims.get('sub')}"
+        except TokenInvalido:
+            pass
+    client = scope.get("client")
+    return f"ip:{client[0] if client else 'desconocida'}"
+
+
 class RateLimitMiddleware:
-    def __init__(self, app: ASGIApp, max_per_minute: int = 120):
+    def __init__(self, app: ASGIApp, max_per_minute: int = 240):
         self.app = app
         self.max_per_minute = max_per_minute
         self._hits: dict[str, list[float]] = defaultdict(list)
@@ -58,29 +97,26 @@ class RateLimitMiddleware:
             return
 
         path = scope.get("path") or ""
-        if path in {"/api/health", "/api/v1/eventos"} or scope.get("method") == "OPTIONS":
+        if path in _SIN_LIMITE or scope.get("method") == "OPTIONS":
             await self.app(scope, receive, send)
             return
 
-        client = scope.get("client")
-        ip = client[0] if client else "unknown"
+        key = _clave_limite(scope)
         now = time.monotonic()
         window = now - 60
         with self._lock:
-            stamps = [t for t in self._hits.get(ip, ()) if t > window]
+            stamps = [t for t in self._hits.get(key, ()) if t > window]
             if len(stamps) >= self.max_per_minute:
-                self._hits[ip] = stamps
+                self._hits[key] = stamps
                 response = JSONResponse(
-                    {
-                        "detail": "Demasiadas solicitudes. Espere un momento e intente de nuevo",
-                    },
+                    {"detail": "Demasiadas solicitudes. Espere un momento e intente de nuevo"},
                     status_code=429,
                     headers={"Retry-After": "60"},
                 )
                 await response(scope, receive, send)
                 return
             stamps.append(now)
-            self._hits[ip] = stamps
+            self._hits[key] = stamps
             if len(self._hits) > 4000:
                 stale = [k for k, ts in self._hits.items() if not ts or ts[-1] <= window]
                 for k in stale:
@@ -90,7 +126,7 @@ class RateLimitMiddleware:
 
 
 class RequestLogMiddleware:
-    """Bitácora liviana: mutaciones y errores. Sin body (PII) ni GET de listados."""
+    """Asigna X-Request-ID y registra mutaciones y errores. Sin body (PII)."""
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -100,12 +136,12 @@ class RequestLogMiddleware:
             await self.app(scope, receive, send)
             return
 
+        entrante = Headers(scope=scope).get("x-request-id") or ""
+        rid = entrante[:64] if entrante.isascii() and entrante else secrets.token_hex(8)
+        token = request_id_var.set(rid)
+
         path = scope.get("path") or ""
         method = scope.get("method") or ""
-        if path in _SKIP_LOG or method == "OPTIONS":
-            await self.app(scope, receive, send)
-            return
-
         started = time.perf_counter()
         status_code = 500
 
@@ -113,15 +149,18 @@ class RequestLogMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = int(message.get("status") or 500)
+                MutableHeaders(raw=message.setdefault("headers", []))["X-Request-ID"] = rid
             await send(message)
 
         try:
             await self.app(scope, receive, send_logged)
         finally:
-            ms = (time.perf_counter() - started) * 1000
-            if status_code >= 500:
-                logger.error("%s %s → %s (%.0f ms)", method, path, status_code, ms)
-            elif status_code >= 400:
-                logger.warning("%s %s → %s (%.0f ms)", method, path, status_code, ms)
-            elif method in _MUTATIONS:
-                logger.info("%s %s → %s (%.0f ms)", method, path, status_code, ms)
+            if path not in _SKIP_LOG and method != "OPTIONS":
+                ms = (time.perf_counter() - started) * 1000
+                if status_code >= 500:
+                    logger.error("%s %s → %s (%.0f ms)", method, path, status_code, ms)
+                elif status_code >= 400:
+                    logger.warning("%s %s → %s (%.0f ms)", method, path, status_code, ms)
+                elif method in _MUTATIONS:
+                    logger.info("%s %s → %s (%.0f ms)", method, path, status_code, ms)
+            request_id_var.reset(token)

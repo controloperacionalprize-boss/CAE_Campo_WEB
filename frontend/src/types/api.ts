@@ -199,6 +199,9 @@ export type GuiaIngreso = {
   recepcionado_acopio_at: string | null
   recepcionado_planta: boolean
   recepcionado_planta_at: string | null
+  /** Conteo al llegar a planta (registrado desde la app móvil). null = aún sin registrar. */
+  jarras_llegaron?: number | null
+  jabas_llegaron?: number | null
   created_at: string
   updated_at: string
 }
@@ -240,6 +243,8 @@ export type ViajeDetalle = {
   jarras_extras: number
   recepcionado_acopio: boolean
   recepcionado_planta: boolean
+  jarras_llegaron?: number | null
+  jabas_llegaron?: number | null
 }
 
 export type CroquisLinea = {

@@ -1,22 +1,46 @@
+# Blueprint de Render: solo la API. La web se despliega en Vercel (frontend/vercel.json).
+# Ver docs/DESPLIEGUE.md antes del primer deploy.
 services:
+  # ---------- API (FastAPI)
   - type: web
     name: despacho-campo-api
     runtime: python
     rootDir: backend
-    plan: free
+    # Misma región que Neon (us-east-2 = Ohio): cada consulta cuesta decenas de ms, no cientos.
+    region: ohio
+    # El plan gratuito se suspende tras 15 min sin tráfico y el móvil vería timeouts.
+    plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-graceful-shutdown 10
+    # Si una migración falla, el deploy se cancela y sigue corriendo la versión anterior.
+    preDeployCommand: python migrate.py
+    # --proxy-headers + forwarded-allow-ips: la IP real del cliente (límite de tasa por dispositivo).
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*" --timeout-graceful-shutdown 10
     healthCheckPath: /api/health
     envVars:
       - key: APP_ENV
         value: production
-      - key: TRUSTED_HOSTS
-        value: "*.onrender.com"
-      - key: RATE_LIMIT_PER_MINUTE
-        value: "120"
+      - key: PYTHON_VERSION
+        value: "3.13.1"
+      - key: TZ
+        value: America/Lima
       - key: DATABASE_URL
         sync: false
+      # Credencial de la app móvil. Configurar la misma en la app; nunca en la web.
       - key: API_KEY
         generateValue: true
+      # Firma de las sesiones web.
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: SESION_HORAS
+        value: "12"
+      - key: TRUSTED_HOSTS
+        value: "*.onrender.com"
+      # Dominio(s) de la web en Vercel, separados por coma. Ej: https://despacho-campo.vercel.app
       - key: CORS_ORIGINS
         sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "240"
+      - key: DB_POOL_MAX
+        value: "10"
+      - key: LOG_LEVEL
+        value: INFO

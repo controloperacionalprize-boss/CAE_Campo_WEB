@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { SoloEditores } from '../context/AuthContext'
 import { Clock, LandPlot, LayoutGrid, MapPinned, Plus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { SearchInput, Select, Switch } from '../components/ui/Form'
@@ -537,9 +538,9 @@ export function UbicacionesPage() {
             title={label}
             icon={VIEW_ICON[view]}
             actions={
-              <Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
+              <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
                 {createAction.label}
-              </Button>
+              </Button></SoloEditores>
             }
           />
           <FilterBar embedded onClear={clearFilters} hasActiveFilters={hasActiveFilters}>
@@ -566,9 +567,9 @@ export function UbicacionesPage() {
                     Limpiar filtros
                   </Button>
                 ) : (
-                  <Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
+                  <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
                     {createAction.label}
-                  </Button>
+                  </Button></SoloEditores>
                 )
               }
             />

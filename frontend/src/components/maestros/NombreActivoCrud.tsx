@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { SoloEditores } from '../../context/AuthContext'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { FormActions, Input, SearchInput, Switch } from '../ui/Form'
@@ -129,9 +130,9 @@ export function NombreActivoCrud({
   }, [createSignal])
 
   const createButton = (
-    <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+    <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
       Nuevo {singular}
-    </Button>
+    </Button></SoloEditores>
   )
 
   return (
@@ -180,9 +181,9 @@ export function NombreActivoCrud({
                 Limpiar filtros
               </Button>
             ) : (
-              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+              <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
                 Nuevo {singular}
-              </Button>
+              </Button></SoloEditores>
             )
           }
         />

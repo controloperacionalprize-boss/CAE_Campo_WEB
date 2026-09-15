@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { SoloEditores } from '../../context/AuthContext'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { FormActions, FormSection, Input, SearchInput, Select, Switch } from '../ui/Form'
@@ -146,7 +147,7 @@ export function VehiculosPanel({ createSignal }: { createSignal?: number }) {
             hasActiveFilters ? (
               <Button variant="secondary" onClick={clearFilters}>Limpiar filtros</Button>
             ) : (
-              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>Nuevo vehículo</Button>
+              <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>Nuevo vehículo</Button></SoloEditores>
             )
           }
         />

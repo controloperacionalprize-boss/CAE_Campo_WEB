@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from fastapi import HTTPException
@@ -5,6 +6,8 @@ from psycopg2 import IntegrityError, errorcodes
 from psycopg2.errors import ForeignKeyViolation, UniqueViolation
 
 from .errors import fk_message, integrity_message, not_found, unique_message
+
+logger = logging.getLogger("despacho")
 
 ALLOWED_TABLES = {
     "actividad_economica",
@@ -154,6 +157,8 @@ ALLOWED_COLUMNS = {
         "recepcionado_acopio_at",
         "recepcionado_planta",
         "recepcionado_planta_at",
+        "jarras_llegaron",
+        "jabas_llegaron",
         "created_at",
         "updated_at",
     },
@@ -311,10 +316,11 @@ def _raise_db(exc: Exception) -> None:
             detail = "Los datos no cumplen una regla del sistema"
         raise HTTPException(status_code=400, detail=detail) from None
     if code == errorcodes.RESTRICT_VIOLATION:
+        # El texto de Postgres (tablas, ids) queda solo en el log.
+        logger.warning("Restricción de auditoría: %s", str(getattr(exc, "pgerror", "") or "").split("\n")[0])
         raise HTTPException(
             status_code=409,
-            detail=str(getattr(exc, "pgerror", "") or integrity_message()).split("\n")[0]
-            or "No se puede eliminar este registro: se conserva por auditoría",
+            detail="No se puede eliminar ni modificar este registro: se conserva por auditoría",
         ) from None
     if isinstance(exc, IntegrityError):
         raise HTTPException(status_code=409, detail=integrity_message()) from None

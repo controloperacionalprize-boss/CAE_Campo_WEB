@@ -238,7 +238,7 @@ function DetalleTab({ items }: { items: ViajeDetalle[] }) {
         <StatBox label="Jarras extras" value={totals.jarrasE} />
       </div>
       <TableShell flush stickyHeader>
-        <Table className="min-w-[720px]">
+        <Table className="min-w-[840px]">
           <THead sticky>
             <Th>Guía</Th>
             <Th>Fundo</Th>
@@ -248,6 +248,7 @@ function DetalleTab({ items }: { items: ViajeDetalle[] }) {
             <Th align="right">Jabas I.</Th>
             <Th align="right">Jarras/jabas</Th>
             <Th align="right">Jarras extras</Th>
+            <Th align="right">Llegaron (jarras / jabas)</Th>
             <Th>Estado</Th>
           </THead>
           <tbody>
@@ -265,6 +266,22 @@ function DetalleTab({ items }: { items: ViajeDetalle[] }) {
                 <Td className="text-right tabular-nums">{row.jabas_incompletas}</Td>
                 <Td className="text-right tabular-nums">{row.jarras_jabas}</Td>
                 <Td className="text-right tabular-nums">{row.jarras_extras}</Td>
+                <Td className="text-right tabular-nums">
+                  {row.jarras_llegaron == null && row.jabas_llegaron == null ? (
+                    <span className="text-muted">Sin registro</span>
+                  ) : (
+                    <span
+                      className={
+                        row.jarras_llegaron === row.jarras && row.jabas_llegaron === row.jabas_completas + row.jabas_incompletas
+                          ? 'text-success'
+                          : 'font-medium text-danger'
+                      }
+                      title={`Despachado: ${row.jarras} jarras / ${row.jabas_completas + row.jabas_incompletas} jabas`}
+                    >
+                      {row.jarras_llegaron ?? '—'} / {row.jabas_llegaron ?? '—'}
+                    </span>
+                  )}
+                </Td>
                 <Td>
                   <span className="flex flex-wrap gap-1">
                     <EstacionPill ok={!!row.recepcionado_acopio} label="Acopio" />

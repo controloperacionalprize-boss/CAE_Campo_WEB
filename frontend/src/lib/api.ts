@@ -1,8 +1,24 @@
 import type { Paginated } from '../types/api'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
-const API_KEY = import.meta.env.VITE_API_KEY ?? ''
 const FETCH_TIMEOUT_MS = 20_000
+
+/*
+ * La web se autentica con el token de sesión del usuario (POST /api/v1/auth/login).
+ * Nunca con la API key: todo lo que va en el bundle es público.
+ */
+let obtenerToken: () => string | null = () => null
+let alNoAutorizado: () => void = () => {}
+
+export function configurarSesion(getToken: () => string | null, onUnauthorized: () => void) {
+  obtenerToken = getToken
+  alNoAutorizado = onUnauthorized
+}
+
+/** Una respuesta 401 con sesión abierta significa sesión vencida o revocada. */
+export function notificarNoAutorizado() {
+  if (obtenerToken()) alNoAutorizado()
+}
 
 export class ApiError extends Error {
   status: number
@@ -25,7 +41,8 @@ export function isAbortError(e: unknown): boolean {
 export function apiHeaders(withJsonBody = false): HeadersInit {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (withJsonBody) headers['Content-Type'] = 'application/json'
-  if (API_KEY) headers['X-API-Key'] = API_KEY
+  const token = obtenerToken()
+  if (token) headers.Authorization = `Bearer ${token}`
   return headers
 }
 
@@ -75,7 +92,7 @@ function messageFromDetail(detail: unknown, status: number): string {
     const nested = obj.message ?? obj.msg ?? obj.detail
     if (typeof nested === 'string' && nested.trim()) return nested
   }
-  if (status === 401) return 'No autorizado. Revise la clave de acceso'
+  if (status === 401) return 'Su sesión venció. Inicie sesión nuevamente'
   if (status === 403) return 'No tiene permiso para esta operación'
   if (status === 404) return 'No se encontró el recurso solicitado'
   if (status === 409) return 'Conflicto con un registro existente'
@@ -117,6 +134,7 @@ async function request<T>(url: URL, init: RequestInit, callerSignal?: AbortSigna
     }
     throw new ApiError(0, e, 'No se pudo conectar con el servidor. Verifique su conexión.')
   }
+  if (res.status === 401) notificarNoAutorizado()
   if (!res.ok) await parseError(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

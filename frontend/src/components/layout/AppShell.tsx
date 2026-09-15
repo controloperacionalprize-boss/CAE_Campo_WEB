@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronDown, Menu, X, LogOut } from 'lucide-react'
+import { ChevronDown, KeyRound, Menu, X, LogOut } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -7,11 +7,12 @@ import {
   isNavChildActive,
   isNavGroupActive,
   isNavSeparator,
-  navigation,
+  navegacionVisible,
   pageTitleFromNav,
   type NavEntry,
 } from '../../config/navigation'
 import { cn } from '../../lib/utils'
+import { CambiarPasswordModal } from './CambiarPasswordModal'
 
 function BrandIcon({ className }: { className?: string }) {
   return (
@@ -142,10 +143,12 @@ function NavGroup({
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const [searchParams] = useSearchParams()
   const currentTab = searchParams.get('tab')
+  const { puede } = useAuth()
+  const items = navegacionVisible(puede)
 
   return (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4" aria-label="Navegación principal">
-      {navigation.map((item) =>
+      {items.map((item) =>
         isNavSeparator(item) ? (
           <div
             key={item.id}
@@ -161,7 +164,8 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth()
+  const { user, sesion, logout } = useAuth()
+  const [passwordOpen, setPasswordOpen] = useState(false)
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
@@ -234,7 +238,9 @@ export function AppShell() {
           <div className="flex items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-olive-950">{user?.nombre ?? 'Usuario'}</p>
-              <p className="text-[11px] text-muted">DNI {user?.dni ?? '—'}</p>
+              <p className="text-[11px] text-muted">
+                {user?.rol ? `${user.rol.charAt(0)}${user.rol.slice(1).toLowerCase()} · ` : ''}DNI {user?.dni ?? '—'}
+              </p>
             </div>
             <div
               className="flex size-9 items-center justify-center rounded-full bg-olive-200 text-xs font-semibold text-olive-900"
@@ -246,6 +252,15 @@ export function AppShell() {
                 .map((p) => p[0])
                 .join('')}
             </div>
+            <button
+              type="button"
+              title="Cambiar contraseña"
+              className="rounded-lg p-2 text-muted hover:bg-olive-100 hover:text-olive-900"
+              onClick={() => setPasswordOpen(true)}
+            >
+              <KeyRound className="size-4" />
+              <span className="sr-only">Cambiar contraseña</span>
+            </button>
             <button
               type="button"
               title="Cerrar sesión"
@@ -263,10 +278,26 @@ export function AppShell() {
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-6xl">
+            {sesion?.debe_cambiar_password && (
+              <div
+                role="status"
+                className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/25 bg-warn-soft px-4 py-3 text-sm text-warn"
+              >
+                <span>Su contraseña todavía es su DNI. Cámbiela para proteger su cuenta.</span>
+                <button
+                  type="button"
+                  onClick={() => setPasswordOpen(true)}
+                  className="font-medium underline hover:no-underline"
+                >
+                  Cambiar ahora
+                </button>
+              </div>
+            )}
             <Outlet />
           </div>
         </main>
       </div>
+      <CambiarPasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </div>
   )
 }

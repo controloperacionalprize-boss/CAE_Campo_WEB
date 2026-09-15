@@ -3,6 +3,8 @@ import { Pencil, Eye, MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, linkButtonClass } from './Button'
 import { cn } from '../../lib/utils'
+import { useAuth } from '../../context/AuthContext'
+import { PERMISOS } from '../../lib/permisos'
 
 /** Acción de tabla unificada: icono + etiqueta, mismo look en toda la app. */
 export function TableAction({
@@ -30,7 +32,10 @@ export function TableAction({
   )
 }
 
+/** Editar un catálogo: solo visible con permiso de edición de maestros. */
 export function EditButton({ onClick, className }: { onClick: () => void; className?: string }) {
+  const { puede } = useAuth()
+  if (!puede(PERMISOS.maestrosEditar)) return null
   return <TableAction label="Editar" icon={Pencil} onClick={onClick} className={className} />
 }
 
@@ -48,8 +53,9 @@ export function ViewButton({ to, onClick, className }: { to?: string; onClick?: 
 
 type RowAction = { label: string; icon?: LucideIcon; onClick: () => void; variant?: 'default' | 'danger' }
 
-/** Menú compacto para filas con varias acciones */
+/** Menú compacto para filas con varias acciones (altas y cambios de catálogos). */
 export function RowActionsMenu({ actions }: { actions: RowAction[] }) {
+  const { puede } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -62,7 +68,7 @@ export function RowActionsMenu({ actions }: { actions: RowAction[] }) {
     return () => document.removeEventListener('mousedown', onClick)
   }, [open])
 
-  if (actions.length === 0) return null
+  if (actions.length === 0 || !puede(PERMISOS.maestrosEditar)) return null
   if (actions.length === 1) {
     const a = actions[0]
     const Icon = a.icon

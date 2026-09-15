@@ -1,4 +1,4 @@
-import { API_BASE, apiHeaders, isAbortError } from './api'
+import { API_BASE, apiHeaders, isAbortError, notificarNoAutorizado } from './api'
 import type { GuiaIngreso, Viaje } from '../types/api'
 
 export type LiveStatus = 'connecting' | 'live' | 'disconnected'
@@ -80,6 +80,12 @@ export async function connectGuiaEvents(
         headers: { ...apiHeaders(false), Accept: 'text/event-stream' },
         signal,
       })
+      if (res.status === 401 || res.status === 403) {
+        // Sin sesión válida no tiene sentido reintentar: la app vuelve al login.
+        notificarNoAutorizado()
+        onStatus('disconnected')
+        return
+      }
       if (!res.ok || !res.body) {
         onStatus('disconnected')
         await sleep(delay, signal)

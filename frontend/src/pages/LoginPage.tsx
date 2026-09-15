@@ -1,65 +1,47 @@
 import { useState, type FormEvent } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
+import { InfoBanner } from '../components/ui/Feedback'
 import { Input } from '../components/ui/Form'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { apiGet, ApiError } from '../lib/api'
+import { ApiError } from '../lib/api'
 import { isValidDni } from '../lib/utils'
-import type { Paginated, Usuario } from '../types/api'
 
 export function LoginPage() {
-  const { user, login } = useAuth()
+  const { user, login, motivoSalida } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const [dni, setDni] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ dni?: string; password?: string }>({})
+  const destino = (location.state as { desde?: string } | null)?.desde || '/'
 
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to={destino} replace />
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     const next: typeof errors = {}
     if (!isValidDni(dni)) next.dni = 'Ingrese un DNI de 8 dígitos'
-    if (!password || password.length < 4) next.password = 'Contraseña requerida (mín. 4)'
+    if (!password) next.password = 'Ingrese su contraseña'
     setErrors(next)
-    if (Object.keys(next).length) {
-      toast.error('Revise los campos del formulario')
-      return
-    }
+    if (Object.keys(next).length) return
 
     setLoading(true)
     try {
-      const page = await apiGet<Paginated<Usuario>>('/api/v1/usuarios', {
-        dni,
-        limit: 1,
-        incluir_inactivos: true,
-      })
-      const found = page.items[0]
-      if (!found) {
-        toast.error('DNI no registrado en el sistema')
-        setErrors({ dni: 'No hay usuario con este DNI' })
-        return
-      }
-      if (!found.activo) {
-        toast.error('Usuario inactivo')
-        setErrors({ dni: 'Este usuario está inactivo' })
-        return
-      }
-
-      login({ id: found.id, dni: found.dni, nombre: found.nombre })
-      toast.success(`Bienvenido/a, ${found.nombre.split(' ')[0]}`)
-      navigate('/')
+      const sesion = await login(dni, password)
+      toast.success(`Bienvenido/a, ${sesion.usuario.nombre.split(' ')[0]}`)
+      navigate(destino, { replace: true })
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : 'No se pudo iniciar sesión. Intente de nuevo.'
-      toast.error(msg)
+      if (err instanceof ApiError && err.status === 401) {
+        setErrors({ password: err.message })
+      } else {
+        toast.error(err instanceof ApiError ? err.message : 'No se pudo iniciar sesión. Intente de nuevo.')
+      }
     } finally {
       setLoading(false)
     }
@@ -98,6 +80,8 @@ export function LoginPage() {
           <h1 className="mt-2 font-display text-3xl text-olive-950">Despacho Campo</h1>
           <p className="mt-2 text-sm text-muted">Ingrese con su DNI y contraseña</p>
         </div>
+
+        {motivoSalida && <InfoBanner message={motivoSalida} />}
 
         <form
           onSubmit={onSubmit}

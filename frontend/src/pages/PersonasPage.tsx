@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SoloEditores } from '../context/AuthContext'
 import { Plus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Breadcrumbs, PageHeader } from '../components/ui/Feedback'
@@ -78,9 +79,9 @@ export function PersonasPage() {
           />
         }
         actions={
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateSignal((n) => n + 1)}>
+          <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateSignal((n) => n + 1)}>
             {CREATE_LABELS[currentTab]}
-          </Button>
+          </Button></SoloEditores>
         }
       />
 

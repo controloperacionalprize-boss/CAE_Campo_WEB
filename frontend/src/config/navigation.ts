@@ -9,6 +9,7 @@ import {
   PackageCheck,
   BarChart3,
 } from 'lucide-react'
+import { PERMISOS, type Permiso } from '../lib/permisos'
 
 export type NavChild = {
   label: string
@@ -24,6 +25,8 @@ export type NavEntry = {
   end?: boolean
   defaultTab?: string
   children?: NavChild[]
+  /** Permiso necesario para ver la entrada (y la ruta). */
+  permiso: Permiso
 }
 
 export type NavSeparator = {
@@ -38,17 +41,18 @@ export function isNavSeparator(item: NavItem): item is NavSeparator {
 }
 
 export const navigation: NavItem[] = [
-  { id: 'inicio', to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
-  { id: 'despacho', to: '/despacho', label: 'Despacho', icon: ClipboardList },
-  { id: 'viajes', to: '/viajes', label: 'Viajes', icon: Route },
-  { id: 'recepcion', to: '/recepcion', label: 'Recepción', icon: PackageCheck },
-  { id: 'reportes', to: '/reportes', label: 'Reportes', icon: BarChart3 },
+  { id: 'inicio', to: '/', label: 'Inicio', icon: LayoutDashboard, end: true, permiso: PERMISOS.operacionVer },
+  { id: 'despacho', to: '/despacho', label: 'Despacho', icon: ClipboardList, permiso: PERMISOS.operacionVer },
+  { id: 'viajes', to: '/viajes', label: 'Viajes', icon: Route, permiso: PERMISOS.operacionVer },
+  { id: 'recepcion', to: '/recepcion', label: 'Recepción', icon: PackageCheck, permiso: PERMISOS.operacionVer },
+  { id: 'reportes', to: '/reportes', label: 'Reportes', icon: BarChart3, permiso: PERMISOS.reportesVer },
   { id: 'sep-maestros', kind: 'separator' },
   {
     id: 'ubicaciones',
     to: '/ubicaciones',
     label: 'Fundos',
     icon: MapPinned,
+    permiso: PERMISOS.maestrosVer,
     defaultTab: 'fundos',
     children: [
       { label: 'Fundos', tab: 'fundos' },
@@ -62,6 +66,7 @@ export const navigation: NavItem[] = [
     to: '/personas',
     label: 'Personas',
     icon: Users,
+    permiso: PERMISOS.maestrosVer,
     defaultTab: 'usuarios',
     children: [
       { label: 'Usuarios', tab: 'usuarios' },
@@ -76,6 +81,7 @@ export const navigation: NavItem[] = [
     to: '/flota',
     label: 'Flota',
     icon: Truck,
+    permiso: PERMISOS.maestrosVer,
     defaultTab: 'vehiculos',
     children: [
       { label: 'Vehículos', tab: 'vehiculos' },
@@ -84,6 +90,19 @@ export const navigation: NavItem[] = [
     ],
   },
 ]
+
+/** Entradas visibles para la sesión; los separadores sin entradas debajo se omiten. */
+export function navegacionVisible(puede: (p: Permiso) => boolean): NavItem[] {
+  const out: NavItem[] = []
+  for (const item of navigation) {
+    if (isNavSeparator(item)) {
+      out.push(item)
+      continue
+    }
+    if (puede(item.permiso)) out.push(item)
+  }
+  return out.filter((item, i) => !isNavSeparator(item) || (i > 0 && out[i + 1] !== undefined && !isNavSeparator(out[i + 1])))
+}
 
 export function childHref(parentTo: string, defaultTab: string | undefined, tab?: string) {
   const t = tab ?? defaultTab

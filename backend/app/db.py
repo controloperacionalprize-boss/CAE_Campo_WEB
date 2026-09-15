@@ -1,15 +1,36 @@
+"""Pool de conexiones a Postgres (Neon).
+
+- ThreadedConnectionPool: FastAPI atiende rutas síncronas en varios hilos.
+- Semáforo: si el pool está lleno, la petición espera un turno (hasta
+  POOL_ESPERA_SEG) en vez de fallar al instante.
+- Conexiones inactivas se verifican antes de usarlas: Neon cierra las
+  conexiones al suspender el cómputo y la primera consulta fallaría.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
 from contextlib import contextmanager
-from threading import Lock
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import psycopg2
 import psycopg2.extras
-from psycopg2.pool import SimpleConnectionPool
+from fastapi import HTTPException
+from psycopg2.pool import ThreadedConnectionPool
 
 from .config import get_settings
 
-_pool: SimpleConnectionPool | None = None
-_pool_lock = Lock()
+logger = logging.getLogger("despacho")
+
+POOL_ESPERA_SEG = 10
+VERIFICAR_TRAS_SEG = 30
+
+_pool: ThreadedConnectionPool | None = None
+_cupos: threading.BoundedSemaphore | None = None
+_ultimo_uso: dict[int, float] = {}
+_pool_lock = threading.Lock()
 
 
 def _harden_dsn(url: str) -> str:
@@ -26,60 +47,89 @@ def _harden_dsn(url: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(query)))
 
 
-def _make_pool(url: str) -> SimpleConnectionPool:
-    return SimpleConnectionPool(
-        1,
-        8,
-        dsn=_harden_dsn(url),
-        cursor_factory=psycopg2.extras.RealDictCursor,
-        connect_timeout=10,
-    )
-
-
-def get_pool() -> SimpleConnectionPool:
-    global _pool
+def _get_pool() -> tuple[ThreadedConnectionPool, threading.BoundedSemaphore]:
+    global _pool, _cupos
     if _pool is None:
         with _pool_lock:
             if _pool is None:
-                _pool = _make_pool(get_settings().database_url)
-    return _pool
+                settings = get_settings()
+                maximo = max(2, settings.db_pool_max)
+                _pool = ThreadedConnectionPool(
+                    1,
+                    maximo,
+                    dsn=_harden_dsn(settings.database_url),
+                    cursor_factory=psycopg2.extras.RealDictCursor,
+                    connect_timeout=10,
+                )
+                _cupos = threading.BoundedSemaphore(maximo)
+    assert _pool is not None and _cupos is not None
+    return _pool, _cupos
 
 
 def close_pool() -> None:
-    global _pool
+    global _pool, _cupos
     with _pool_lock:
         if _pool is not None:
             _pool.closeall()
-            _pool = None
+        _pool = None
+        _cupos = None
+        _ultimo_uso.clear()
 
 
-def _checkout():
-    pool = get_pool()
-    conn = pool.getconn()
+def _conexion_viva(conn) -> bool:
     if conn.closed:
-        pool.putconn(conn, close=True)
+        return False
+    if time.monotonic() - _ultimo_uso.get(id(conn), 0) < VERIFICAR_TRAS_SEG:
+        return True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        conn.rollback()
+        return True
+    except psycopg2.Error:
+        return False
+
+
+def _checkout(pool: ThreadedConnectionPool):
+    for _ in range(3):
         conn = pool.getconn()
-    return pool, conn
+        if _conexion_viva(conn):
+            return conn
+        logger.info("Conexión a la BD cerrada por el servidor; se abre otra")
+        _ultimo_uso.pop(id(conn), None)
+        pool.putconn(conn, close=True)
+    return pool.getconn()
 
 
 @contextmanager
 def get_conn(*, write: bool = True):
-    pool, conn = _checkout()
-    closed = False
+    pool, cupos = _get_pool()
+    if not cupos.acquire(timeout=POOL_ESPERA_SEG):
+        raise HTTPException(status_code=503, detail="El servidor está ocupado. Intente de nuevo en unos segundos")
+    conn = None
+    descartar = False
     try:
+        conn = _checkout(pool)
         yield conn
         if write:
             conn.commit()
         else:
             conn.rollback()
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        pool.putconn(conn, close=True)
-        closed = True
+    except Exception as exc:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                descartar = True
+            if isinstance(exc, (psycopg2.OperationalError, psycopg2.InterfaceError)):
+                descartar = True
         raise
     finally:
-        if not closed:
-            pool.putconn(conn)
+        if conn is not None:
+            if conn.closed:
+                descartar = True
+            _ultimo_uso[id(conn)] = time.monotonic()
+            if descartar:
+                _ultimo_uso.pop(id(conn), None)
+            pool.putconn(conn, close=descartar)
+        cupos.release()

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { SoloEditores, useAuth } from '../../context/AuthContext'
+import { PERMISOS } from '../../lib/permisos'
 import { Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { FormActions, FormSection, Input, SearchInput, Select, Switch } from '../ui/Form'
@@ -223,9 +225,9 @@ export function UsuariosPanel({ createSignal }: { createSignal?: number }) {
                 Limpiar filtros
               </Button>
             ) : (
-              <Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
+              <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={openCreate}>
                 Nuevo usuario
-              </Button>
+              </Button></SoloEditores>
             )
           }
         />
@@ -321,7 +323,8 @@ function UsuarioDrawer({
   const isCreate = !usuario
   const [dni, setDni] = useState('')
   const [nombre, setNombre] = useState('')
-  const [password, setPassword] = useState('')
+  const [restableciendo, setRestableciendo] = useState(false)
+  const { puede } = useAuth()
   const [cargoId, setCargoId] = useState('')
   const [rolId, setRolId] = useState('')
   const [grupoId, setGrupoId] = useState('')
@@ -339,7 +342,6 @@ function UsuarioDrawer({
     if (!open) return
     setDni(usuario?.dni ?? '')
     setNombre(usuario?.nombre ?? '')
-    setPassword('')
     setCargoId(usuario?.cargo_id != null ? String(usuario.cargo_id) : '')
     setRolId(usuario?.rol_id != null ? String(usuario.rol_id) : '')
     setGrupoId(usuario?.grupo_id != null ? String(usuario.grupo_id) : '')
@@ -353,9 +355,6 @@ function UsuarioDrawer({
     const next: Record<string, string> = {}
     if (!isValidDni(dni)) next.dni = 'DNI debe tener 8 dígitos'
     if (!nombre.trim()) next.nombre = 'Requerido'
-    if (isCreate && password.length < 4) {
-      next.password = 'Ingrese una contraseña (mín. 4 caracteres)'
-    }
     setErrors(next)
     if (Object.keys(next).length) return
 
@@ -404,16 +403,32 @@ function UsuarioDrawer({
             error={errors.nombre}
             required
           />
-          {isCreate && (
-            <Input
-              label="Contraseña"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={errors.password}
-              hint="Mínimo 4 caracteres"
-              required
-            />
+          <p className="rounded-lg bg-sand-50 px-3 py-2 text-xs text-muted">
+            {isCreate
+              ? 'La contraseña inicial para la web es el DNI. Al entrar, el sistema le pedirá cambiarla.'
+              : 'La app móvil ingresa solo con el DNI. La web usa DNI y contraseña.'}
+          </p>
+          {!isCreate && usuario && puede(PERMISOS.usuariosAdmin) && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={restableciendo}
+              onClick={async () => {
+                if (!window.confirm(`¿Restablecer la contraseña de ${usuario.nombre}? Quedará igual a su DNI.`)) return
+                setRestableciendo(true)
+                try {
+                  await apiPost(`/api/v1/usuarios/${usuario.id}/restablecer-password`, {})
+                  toast.success('Contraseña restablecida: ahora es el DNI del usuario')
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'No se pudo restablecer la contraseña')
+                } finally {
+                  setRestableciendo(false)
+                }
+              }}
+            >
+              Restablecer contraseña
+            </Button>
           )}
         </FormSection>
 

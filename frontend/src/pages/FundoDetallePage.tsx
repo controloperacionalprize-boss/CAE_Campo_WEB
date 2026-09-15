@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { SoloEditores } from '../context/AuthContext'
 import { Link, useParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
@@ -161,9 +162,9 @@ export function FundoDetallePage() {
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill activo={fundo.activo} />
             {createAction && (
-              <Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
+              <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={createAction.onClick}>
                 {createAction.label}
-              </Button>
+              </Button></SoloEditores>
             )}
           </div>
         }
@@ -187,9 +188,9 @@ export function FundoDetallePage() {
               title="Sin módulos"
               description="El módulo pertenece a este fundo. Créelo para poder agregar turnos."
               action={
-                <Button leftIcon={<Plus className="size-4" />} onClick={openNuevoModulo}>
+                <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={openNuevoModulo}>
                   Nuevo módulo
-                </Button>
+                </Button></SoloEditores>
               }
             />
           ) : (
@@ -249,9 +250,9 @@ export function FundoDetallePage() {
               title="Sin turnos"
               description="El turno pertenece a un módulo de este fundo."
               action={
-                <Button leftIcon={<Plus className="size-4" />} onClick={() => openNuevoTurno()}>
+                <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={() => openNuevoTurno()}>
                   Nuevo turno
-                </Button>
+                </Button></SoloEditores>
               }
             />
           ) : (
@@ -316,9 +317,9 @@ export function FundoDetallePage() {
               title="Sin lotes"
               description="El lote pertenece a un turno. Indique código y hectáreas."
               action={
-                <Button leftIcon={<Plus className="size-4" />} onClick={() => openNuevoLote()}>
+                <SoloEditores><Button leftIcon={<Plus className="size-4" />} onClick={() => openNuevoLote()}>
                   Nuevo lote
-                </Button>
+                </Button></SoloEditores>
               }
             />
           ) : (

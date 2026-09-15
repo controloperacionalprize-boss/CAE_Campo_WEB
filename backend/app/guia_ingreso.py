@@ -4,7 +4,16 @@ from decimal import Decimal
 from fastapi import HTTPException
 
 from . import schemas as S
-from .crud import distinct_columns, get_row, insert_row, list_rows, require_activo, update_row
+from .crud import (
+    distinct_columns,
+    get_row,
+    get_row_for_update,
+    insert_row,
+    list_rows,
+    require_activo,
+    update_row,
+)
+from .tiempo import hora_actual, hoy
 
 
 def serialize_guia(row: dict) -> dict:
@@ -250,7 +259,7 @@ def contexto(
                 "lote_id": lote["lote_id"],
                 "lote": lote["lote"],
                 "ha": lote["ha"],
-                "ha_saldo": saldo_ha_lote(cur, lote["lote_id"], date.today())["ha_saldo"],
+                "ha_saldo": saldo_ha_lote(cur, lote["lote_id"], hoy())["ha_saldo"],
                 "modulo": lote["modulo"],
                 "turno": lote["turno"],
             }
@@ -309,8 +318,20 @@ def _totales(jabas_completas: int, jabas_incompletas: int, jarras_jabas: int, ja
     }
 
 
+def _guia_por_codigo(cur, codigo: str) -> dict | None:
+    rows, _ = list_rows(cur, "guia_ingreso", filters={"codigo": codigo}, skip=0, limit=1, with_count=False)
+    return dict(rows[0]) if rows else None
+
+
 def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     usuario = resolve_usuario(cur, usuario_id=payload.usuario_id, usuario_dni=payload.usuario_dni)
+    # Reintento del móvil (timeout o red intermitente): el código ya guardado por el
+    # mismo usuario se devuelve tal cual en vez de responder 409.
+    existente = _guia_por_codigo(cur, payload.codigo)
+    if existente is not None:
+        if existente["usuario_id"] == usuario["id"]:
+            return serialize_guia(existente)
+        raise HTTPException(status_code=409, detail=f"El código {payload.codigo} ya fue usado por otro usuario")
     snap_u = resolve_sesion_movil(
         cur,
         snapshot_usuario(cur, usuario),
@@ -337,8 +358,8 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     if snap_u["fundo_id"] and snap_l["fundo_lote_id"] != snap_u["fundo_id"]:
         raise HTTPException(status_code=400, detail="El lote no pertenece al fundo de la sesión")
 
-    fecha = payload.fecha or date.today()
-    hora = payload.hora_envio or datetime.now().time().replace(second=0, microsecond=0)
+    fecha = payload.fecha or hoy()
+    hora = payload.hora_envio or hora_actual()
     if payload.ha is None:
         raise HTTPException(status_code=400, detail="Indique las hectáreas trabajadas (ha)")
     # FOR UPDATE serializa las altas del mismo lote: dos usuarios no pueden gastar el mismo saldo.
@@ -586,9 +607,9 @@ def recepcionar_acopio(cur, item_id: int) -> dict:
 
 
 def registrar_llegada(cur, item_id: int, *, jarras_llegaron: int, jabas_llegaron: int) -> dict:
-    guia = get_row(cur, "guia_ingreso", "id", item_id)
-    if not guia:
-        raise HTTPException(status_code=404, detail="Guía no encontrada")
+    guia = get_row_for_update(cur, "guia_ingreso", "id", item_id)
+    if (guia.get("estado") or "").lower() == "anulado":
+        raise HTTPException(status_code=400, detail="La guía está anulada")
     cur.execute(
         """
         UPDATE guia_ingreso
