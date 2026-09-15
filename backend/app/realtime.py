@@ -17,6 +17,9 @@ class EventHub:
     def __init__(self) -> None:
         self._subs: set[asyncio.Queue[dict[str, Any]]] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
+        # True mientras realtime_pg escucha Postgres: los eventos llegan por los
+        # triggers (de cualquier proceso) y la publicación directa se omite.
+        self.external = False
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -63,6 +66,8 @@ hub = EventHub()
 
 
 def publish_guia(event_type: str, guia: dict[str, Any]) -> None:
+    if hub.external:
+        return
     try:
         hub.publish({"type": event_type, "guia": guia})
     except Exception:
@@ -70,6 +75,8 @@ def publish_guia(event_type: str, guia: dict[str, Any]) -> None:
 
 
 def publish_viaje(event_type: str, viaje: dict[str, Any]) -> None:
+    if hub.external:
+        return
     try:
         hub.publish({"type": event_type, "viaje": viaje})
     except Exception:

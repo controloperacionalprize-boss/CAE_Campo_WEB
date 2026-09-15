@@ -14,7 +14,8 @@ from .db import close_pool, get_conn
 from .errors import format_validation, json_error, normalize_http_detail
 from .middleware import RateLimitMiddleware, RequestLogMiddleware, SecurityHeadersMiddleware
 from .realtime import hub
-from .routers.eventos import router as eventos_router
+from .realtime_pg import start_listener, stop_listener
+from .routers.eventos import instalar_cierre_sse, router as eventos_router
 from .routers.guias import router as guias_router
 from .routers.maestros import router as maestros_router
 from .routers.reportes import router as reportes_router
@@ -35,8 +36,11 @@ def _configure_logging() -> None:
 async def lifespan(_app: FastAPI):
     _configure_logging()
     hub.bind_loop(asyncio.get_running_loop())
+    instalar_cierre_sse()
+    start_listener()
     logger.info("API lista")
     yield
+    stop_listener()
     hub.close()
     close_pool()
 

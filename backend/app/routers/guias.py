@@ -131,6 +131,7 @@ def create_guia(payload: S.GuiaIngresoIn):
 
 @router.patch("/guias-ingreso/{item_id}", response_model=S.GuiaIngresoOut)
 def patch_guia(item_id: int, payload: S.GuiaIngresoPatch):
+    """Modifica un registro de campo. Acepta los mismos datos del alta; solo envíe los que cambian."""
     with get_conn() as conn:
         row = parchear(conn.cursor(), item_id, payload)
     publish_guia("guia.updated", row)

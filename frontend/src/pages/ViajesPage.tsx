@@ -11,7 +11,7 @@ import {
 } from '../components/ui/Feedback'
 import { Table, TableShell, THead, Th, Td, TdTruncate, Tr } from '../components/ui/Table'
 import { apiGet, isAbortError, listPage } from '../lib/api'
-import { useOnLiveEvent } from '../context/LiveEventsContext'
+import { useOnLiveEvent, useOnLiveResync } from '../context/LiveEventsContext'
 import { cn } from '../lib/utils'
 import type { Croquis, Grr, Viaje, ViajeCompleto, ViajeDetalle } from '../types/api'
 
@@ -453,6 +453,11 @@ export function ViajesPage() {
       silentReload.current = true
       setReloadTick((n) => n + 1)
     }
+  })
+
+  useOnLiveResync(() => {
+    silentReload.current = true
+    setReloadTick((n) => n + 1)
   })
 
   const nGuias = detalle?.detalle.length ?? 0

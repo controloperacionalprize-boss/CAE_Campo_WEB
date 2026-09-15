@@ -264,7 +264,7 @@ SEARCH_COLUMNS = {
     "turno": ("codigo", "nombre"),
     "usuario": ("dni", "nombre"),
     "vehiculo": ("placa",),
-    "guia_ingreso": ("codigo", "usuario_dni", "usuario_nombre", "fundo", "placa", "lote"),
+    "guia_ingreso": ("codigo", "usuario_dni", "usuario_nombre", "fundo", "modulo", "placa", "lote"),
     "viaje": ("codigo", "placa", "conductor_nombre", "kia_origen", "kia_destino"),
 }
 
@@ -352,7 +352,8 @@ def _where_clause(
             pattern = f"%{_escape_like(q.strip()[:80])}%"
             where.append(
                 "("
-                + " OR ".join(f"{c} ILIKE %s ESCAPE '\\\\'" for c in like_cols)
+                # ESCAPE debe ser un solo carácter: en SQL queda ESCAPE '\'.
+                + " OR ".join(f"{c} ILIKE %s ESCAPE '\\'" for c in like_cols)
                 + ")"
             )
             params.extend([pattern] * len(like_cols))
