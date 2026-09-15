@@ -114,34 +114,41 @@ def _uno_por_campo(rows: list, campo: str, valor: str, mensaje: str) -> dict:
     return dict(match[0])
 
 
-def resolve_sesion_movil(cur, payload: S.GuiaIngresoIn, snap_u: dict) -> dict:
+def resolve_sesion_movil(
+    cur,
+    snap_u: dict,
+    *,
+    grupo_id: int | None = None,
+    grupo: str | None = None,
+    fundo_id: int | None = None,
+    fundo: str | None = None,
+) -> dict:
     """Grupo y fundo de la sesión del móvil, no el grupo fijo del maestro de usuario."""
     sesion = dict(snap_u)
-    grupo = None
-    fundo = None
+    grupo_row = None
+    fundo_row = None
 
-    if payload.grupo_id is not None:
-        grupo = get_row(cur, "grupo", "id", payload.grupo_id)
-    elif payload.grupo:
+    if grupo_id is not None:
+        grupo_row = get_row(cur, "grupo", "id", grupo_id)
+    elif grupo:
         filtros: dict = {"activo": True}
-        if payload.fundo_id is not None:
-            filtros["fundo_id"] = payload.fundo_id
+        if fundo_id is not None:
+            filtros["fundo_id"] = fundo_id
         rows, _ = list_rows(cur, "grupo", filters=filtros, skip=0, limit=50, order="id", with_count=False)
         if not rows and "fundo_id" in filtros:
             rows, _ = list_rows(cur, "grupo", filters={"activo": True}, skip=0, limit=50, order="id", with_count=False)
-        grupo = _uno_por_campo(rows, "nombre", payload.grupo, "El grupo indicado no existe")
+        grupo_row = _uno_por_campo(rows, "nombre", grupo, "El grupo indicado no existe")
 
-    if payload.fundo_id is not None:
-        fundo = get_row(cur, "fundo", "id", payload.fundo_id)
-    elif payload.fundo:
+    if fundo_id is not None:
+        fundo_row = get_row(cur, "fundo", "id", fundo_id)
+    elif fundo:
         rows, _ = list_rows(cur, "fundo", filters={"activo": True}, skip=0, limit=50, order="id", with_count=False)
-        fundo = _uno_por_campo(rows, "nombre", payload.fundo, "El fundo indicado no existe")
+        fundo_row = _uno_por_campo(rows, "nombre", fundo, "El fundo indicado no existe")
 
-    if grupo:
-        sesion.update(snapshot_grupo(cur, grupo))
-    if fundo:
-        snap_f = snapshot_fundo(cur, fundo)
-        sesion.update(snap_f)
+    if grupo_row:
+        sesion.update(snapshot_grupo(cur, grupo_row))
+    if fundo_row:
+        sesion.update(snapshot_fundo(cur, fundo_row))
     return sesion
 
 
@@ -256,7 +263,14 @@ def contexto(
     return data
 
 
-def saldo_ha_lote(cur, lote_id: int, fecha: date, *, bloquear: bool = False) -> dict:
+def saldo_ha_lote(
+    cur,
+    lote_id: int,
+    fecha: date,
+    *,
+    bloquear: bool = False,
+    excluir_guia_id: int | None = None,
+) -> dict:
     """Saldo diario del lote: area_ha menos las ha de sus guías vigentes de esa fecha.
     Se reinicia solo al cambiar de día; anular una guía libera sus ha."""
     cur.execute(
@@ -266,14 +280,16 @@ def saldo_ha_lote(cur, lote_id: int, fecha: date, *, bloquear: bool = False) -> 
     lote = cur.fetchone()
     if not lote:
         raise HTTPException(status_code=404, detail="No se encontró el lote")
-    cur.execute(
-        """
+    sql = """
         SELECT COALESCE(SUM(ha), 0) AS usada
         FROM guia_ingreso
         WHERE lote_id = %s AND fecha = %s AND estado <> 'anulado'
-        """,
-        (lote_id, fecha),
-    )
+    """
+    params: list = [lote_id, fecha]
+    if excluir_guia_id is not None:
+        sql += " AND id <> %s"
+        params.append(excluir_guia_id)
+    cur.execute(sql, params)
     usada = Decimal(cur.fetchone()["usada"])
     area = Decimal(lote["area_ha"])
     return {
@@ -295,7 +311,14 @@ def _totales(jabas_completas: int, jabas_incompletas: int, jarras_jabas: int, ja
 
 def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     usuario = resolve_usuario(cur, usuario_id=payload.usuario_id, usuario_dni=payload.usuario_dni)
-    snap_u = resolve_sesion_movil(cur, payload, snapshot_usuario(cur, usuario))
+    snap_u = resolve_sesion_movil(
+        cur,
+        snapshot_usuario(cur, usuario),
+        grupo_id=payload.grupo_id,
+        grupo=payload.grupo,
+        fundo_id=payload.fundo_id,
+        fundo=payload.fundo,
+    )
     if not snap_u.get("grupo_id") and payload.grupo_id:
         grupo = get_row(cur, "grupo", "id", payload.grupo_id)
         snap_u["grupo_id"] = grupo["id"]
@@ -368,9 +391,17 @@ def crear(cur, payload: S.GuiaIngresoIn) -> dict:
     return serialize_guia({**row, "ha_saldo": saldo["ha_saldo"] - payload.ha})
 
 
+_CAMPOS_SESION = ("grupo_id", "grupo", "fundo_id", "fundo")
+_CAMPOS_LOTE = ("modulo", "turno", "lote")
+_CAMPOS_CONTEO = ("jabas_completas", "jabas_incompletas", "jarras_jabas", "jarras_extras")
+
+
 def parchear(cur, item_id: int, payload: S.GuiaIngresoPatch) -> dict:
     current = get_row(cur, "guia_ingreso", "id", item_id)
     data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return serialize_guia(current)
+
     if _guia_ya_es_historica(cur, current):
         extra = [k for k in data if k != "estado"]
         if extra:
@@ -378,25 +409,115 @@ def parchear(cur, item_id: int, payload: S.GuiaIngresoPatch) -> dict:
                 status_code=400,
                 detail="No se puede modificar una guía ya recepcionada o asignada a un viaje",
             )
-    if "vehiculo_id" in data and data["vehiculo_id"] is not None:
+
+    estado_actual = (current.get("estado") or "").lower()
+    if estado_actual == "anulado" and data.get("estado") != "registrado":
+        extra = [k for k in data if k != "estado"]
+        if extra:
+            raise HTTPException(status_code=400, detail="No se puede modificar una guía anulada")
+
+    if "usuario_id" in data or "usuario_dni" in data:
+        usuario = resolve_usuario(
+            cur,
+            usuario_id=data.get("usuario_id"),
+            usuario_dni=data.get("usuario_dni"),
+        )
+        snap_u = snapshot_usuario(cur, usuario)
+        data["usuario_id"] = snap_u["usuario_id"]
+        data["usuario_dni"] = snap_u["usuario_dni"]
+        data["usuario_nombre"] = snap_u["usuario_nombre"]
+
+    cambia_sesion = any(k in data for k in _CAMPOS_SESION)
+    if cambia_sesion:
+        sesion = resolve_sesion_movil(
+            cur,
+            {
+                "grupo_id": current.get("grupo_id"),
+                "grupo": current.get("grupo") or "",
+                "fundo_id": current.get("fundo_id"),
+                "fundo": current.get("fundo") or "",
+            },
+            grupo_id=data["grupo_id"] if "grupo_id" in data else None,
+            grupo=data.get("grupo"),
+            fundo_id=data["fundo_id"] if "fundo_id" in data else None,
+            fundo=data.get("fundo"),
+        )
+        data.update({k: sesion[k] for k in _CAMPOS_SESION})
+
+    fundo_id = data["fundo_id"] if "fundo_id" in data else current.get("fundo_id")
+    if any(k in data for k in _CAMPOS_LOTE) or cambia_sesion:
+        snap_l = resolve_lote_movil(
+            cur,
+            modulo=data["modulo"] if "modulo" in data else current["modulo"],
+            turno=data["turno"] if "turno" in data else current["turno"],
+            lote=data["lote"] if "lote" in data else current["lote"],
+            fundo_id=fundo_id,
+        )
+        if fundo_id and snap_l["fundo_lote_id"] != fundo_id:
+            raise HTTPException(status_code=400, detail="El lote no pertenece al fundo de la sesión")
+        data.update(
+            {
+                "modulo_id": snap_l["modulo_id"],
+                "modulo": snap_l["modulo"],
+                "turno_id": snap_l["turno_id"],
+                "turno": snap_l["turno"],
+                "lote_id": snap_l["lote_id"],
+                "lote": snap_l["lote"],
+            }
+        )
+        if not fundo_id:
+            data["fundo_id"] = snap_l["fundo_lote_id"]
+            data["fundo"] = snap_l["fundo_lote"]
+
+    if data.get("placa"):
+        data.update(resolve_vehiculo_placa(cur, data["placa"]))
+    elif "vehiculo_id" in data and data["vehiculo_id"] is not None:
         data.update(snapshot_vehiculo(cur, data["vehiculo_id"]))
+
     if "tipo_producto" in data and data["tipo_producto"]:
         data["tipo_producto"] = data["tipo_producto"].upper()
     if "envase_principal" in data and data["envase_principal"]:
         data["envase_principal"] = data["envase_principal"].upper()
 
-    jabas_c = data.get("jabas_completas", current["jabas_completas"])
-    jabas_i = data.get("jabas_incompletas", current["jabas_incompletas"])
-    jarras_j = data.get("jarras_jabas", current["jarras_jabas"])
-    jarras_e = data.get("jarras_extras", current["jarras_extras"])
-    if any(k in data for k in ("jabas_completas", "jabas_incompletas", "jarras_jabas", "jarras_extras")):
-        data.update(_totales(jabas_c, jabas_i, jarras_j, jarras_e))
+    if any(k in data for k in _CAMPOS_CONTEO):
+        data.update(
+            _totales(
+                data.get("jabas_completas", current["jabas_completas"]),
+                data.get("jabas_incompletas", current["jabas_incompletas"]),
+                data.get("jarras_jabas", current["jarras_jabas"]),
+                data.get("jarras_extras", current["jarras_extras"]),
+            )
+        )
 
     if data.get("estado") == "anulado":
         _assert_se_puede_anular(cur, current)
 
+    nueva_fecha = data.get("fecha", current["fecha"])
+    nuevo_lote_id = data.get("lote_id", current["lote_id"])
+    nueva_ha = Decimal(str(data.get("ha", current["ha"])))
+    nuevo_estado = (data.get("estado", current.get("estado")) or "").lower()
+
+    saldo = None
+    if nuevo_estado != "anulado" and any(
+        k in data for k in ("ha", "fecha", "estado", "lote_id", *_CAMPOS_LOTE, *_CAMPOS_SESION)
+    ):
+        saldo = saldo_ha_lote(
+            cur, nuevo_lote_id, nueva_fecha, bloquear=True, excluir_guia_id=item_id
+        )
+        if nueva_ha > saldo["ha_saldo"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Las ha ({nueva_ha}) superan el saldo del lote {saldo['lote']} "
+                    f"para el {nueva_fecha}: quedan {saldo['ha_saldo']} de {saldo['area_ha']} ha"
+                ),
+            )
+
     row = update_row(cur, "guia_ingreso", "id", item_id, data)
-    return serialize_guia(row)
+    out = serialize_guia(row)
+    if saldo is not None:
+        out["ha_saldo"] = saldo["ha_saldo"] - nueva_ha
+    return out
 
 
 def _guia_en_algun_viaje(cur, guia_id: int) -> bool:

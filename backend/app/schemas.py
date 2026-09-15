@@ -524,6 +524,22 @@ class GuiaIngresoIn(BaseModel):
 
 
 class GuiaIngresoPatch(BaseModel):
+    """PATCH del registro de campo. Mismos datos del alta; solo se envían los que cambian."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ha: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=4)
+    usuario_id: int | None = None
+    usuario_dni: str | None = Field(default=None, min_length=8, max_length=15)
+    fecha: date | None = None
+    hora_envio: time | None = None
+    grupo_id: int | None = None
+    grupo: str | None = Field(default=None, max_length=80)
+    fundo_id: int | None = None
+    fundo: str | None = Field(default=None, max_length=120)
+    modulo: str | None = Field(default=None, min_length=1, max_length=20)
+    turno: str | None = Field(default=None, min_length=1, max_length=20)
+    lote: str | None = Field(default=None, min_length=1, max_length=30)
     tipo_producto: str | None = Field(default=None, min_length=1, max_length=80)
     tipo_llenado: Decimal | None = None
     envase_principal: str | None = Field(default=None, min_length=1, max_length=80)
@@ -532,15 +548,49 @@ class GuiaIngresoPatch(BaseModel):
     jarras_jabas: int | None = Field(default=None, ge=0)
     jarras_extras: int | None = Field(default=None, ge=0)
     observacion: str | None = Field(default=None, max_length=2000)
-    estado: str | None = None
+    placa: str | None = Field(default=None, min_length=1, max_length=15)
     vehiculo_id: int | None = None
+    estado: str | None = None
 
-    @field_validator("tipo_producto", "envase_principal", "observacion", mode="before")
+    @field_validator("hora_envio", mode="before")
+    @classmethod
+    def parse_hora(cls, v: object) -> time | None:
+        if v is None or v == "":
+            return None
+        return _hora_hhmm(v)
+
+    @field_validator(
+        "modulo",
+        "turno",
+        "lote",
+        "placa",
+        "tipo_producto",
+        "envase_principal",
+        "observacion",
+        "usuario_dni",
+        "grupo",
+        "fundo",
+        mode="before",
+    )
     @classmethod
     def strip_text(cls, v: object) -> object:
         if isinstance(v, str):
             return v.strip()
         return v
+
+    @field_validator("grupo", "fundo")
+    @classmethod
+    def vacio_none(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        return v.strip()
+
+    @field_validator("modulo", "turno", "lote", "placa", "tipo_producto", "envase_principal")
+    @classmethod
+    def mayusculas(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.upper()
 
     @field_validator("estado", mode="before")
     @classmethod

@@ -15,7 +15,7 @@ import { Card } from '../components/ui/Card'
 import { ProgressRing } from '../components/ui/Charts'
 import { Breadcrumbs, ErrorBanner, LoadingBlock } from '../components/ui/Feedback'
 import { isAbortError, listPage } from '../lib/api'
-import { useOnLiveEvent } from '../context/LiveEventsContext'
+import { useOnLiveEvent, useOnLiveResync } from '../context/LiveEventsContext'
 import { useDebounce } from '../hooks/useDebounce'
 import { cn, fmtNum } from '../lib/utils'
 import type { GuiaIngreso, Viaje } from '../types/api'
@@ -239,10 +239,12 @@ export function RecepcionPage() {
     return () => ac.abort()
   }, [fecha, reloadTick])
 
-  useOnLiveEvent(() => {
+  const recargarSilencioso = () => {
     silentReload.current = true
     setReloadTick((n) => n + 1)
-  })
+  }
+  useOnLiveEvent(recargarSilencioso)
+  useOnLiveResync(recargarSilencioso)
 
   // Los más antiguos primero: son los que llevan más tiempo esperando.
   const filteredGrr = useMemo(

@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { useOnLiveEvent } from '../context/LiveEventsContext'
+import { useOnLiveEvent, useOnLiveResync } from '../context/LiveEventsContext'
 import { apiGet, isAbortError } from '../lib/api'
 import { cn, formatFechaLarga } from '../lib/utils'
 import { Button } from '../components/ui/Button'
@@ -168,6 +168,10 @@ export function InicioPage() {
     if (event.type === 'viaje.created' || event.type === 'viaje.updated') {
       if (event.viaje.fecha === f) void loadSilentRef.current()
     }
+  })
+
+  useOnLiveResync(() => {
+    void loadSilentRef.current()
   })
 
   const hoy = resumen?.hoy ?? { count: 0, jabas: 0, jarras: 0 }
