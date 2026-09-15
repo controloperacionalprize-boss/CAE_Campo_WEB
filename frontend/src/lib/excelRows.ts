@@ -1,0 +1,96 @@
+import type { GuiaIngreso, Viaje } from '../types/api'
+import { excelFecha, excelFechaHora, excelNumero, type ExcelValue } from './excel'
+
+export const GUIA_EXCEL_HEADERS = [
+  'Código',
+  'Fecha',
+  'Hora',
+  'DNI',
+  'Usuario',
+  'Grupo',
+  'Fundo',
+  'Módulo',
+  'Turno',
+  'Lote',
+  'Producto',
+  'Tipo llenado',
+  'Envase',
+  'Jabas completas',
+  'Jabas incompletas',
+  'Jarras jabas',
+  'Jarras extras',
+  'Jabas totales',
+  'Jarras totales',
+  'HA',
+  'Observación',
+  'Placa',
+  'Estado',
+  'Recepcionado acopio',
+  'Fecha acopio',
+  'Recepcionado planta',
+  'Fecha planta',
+]
+
+export function guiaExcelRow(g: GuiaIngreso): ExcelValue[] {
+  return [
+    g.codigo,
+    excelFecha(g.fecha),
+    g.hora_envio,
+    g.usuario_dni,
+    g.usuario_nombre,
+    g.grupo,
+    g.fundo,
+    g.modulo,
+    g.turno,
+    g.lote,
+    g.tipo_producto,
+    excelNumero(g.tipo_llenado),
+    g.envase_principal,
+    g.jabas_completas,
+    g.jabas_incompletas,
+    g.jarras_jabas,
+    g.jarras_extras,
+    g.jabas_totales,
+    g.jarras_totales,
+    excelNumero(g.ha),
+    g.observacion,
+    g.placa,
+    g.estado,
+    g.recepcionado_acopio,
+    excelFechaHora(g.recepcionado_acopio_at),
+    g.recepcionado_planta,
+    excelFechaHora(g.recepcionado_planta_at),
+  ]
+}
+
+export const VIAJE_EXCEL_HEADERS = [
+  'Código',
+  'Fecha',
+  'Tipo',
+  'Estado',
+  'Placa',
+  'Conductor',
+  'Origen',
+  'Destino',
+  'GRR',
+  'GRR recepcionada',
+  'Observación',
+  'Creado',
+]
+
+export function viajeExcelRow(v: Viaje): ExcelValue[] {
+  return [
+    v.codigo,
+    excelFecha(v.fecha),
+    v.tipo_viaje,
+    v.estado,
+    v.placa,
+    v.conductor_nombre,
+    v.kia_origen,
+    v.kia_destino,
+    v.grr_numero ?? '',
+    v.grr_recepcionado ?? false,
+    v.observacion,
+    excelFechaHora(v.created_at),
+  ]
+}

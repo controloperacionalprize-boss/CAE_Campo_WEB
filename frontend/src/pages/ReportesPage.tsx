@@ -10,9 +10,12 @@ import {
   Segmented,
   StackedBar,
 } from '../components/ui/Charts'
+import { ExportExcelButton } from '../components/ui/ExportExcelButton'
 import { Breadcrumbs, ErrorBanner, LoadingBlock } from '../components/ui/Feedback'
 import { Table, TableShell, THead, Th, Td, Tr } from '../components/ui/Table'
+import { useToast } from '../context/ToastContext'
 import { apiGet, isAbortError } from '../lib/api'
+import { downloadExcel, excelFecha, stampFile } from '../lib/excel'
 import { fmtNum } from '../lib/utils'
 import type { ReporteDiario, ReporteRango, ReporteVehiculos, ReporteViajes } from '../types/api'
 
@@ -69,6 +72,7 @@ const ESTADOS_VIAJE: Array<{ key: string; label: string; color: string }> = [
 ]
 
 export function ReportesPage() {
+  const toast = useToast()
   const today = toIsoDate()
   const [desde, setDesde] = useState(addDays(today, -14))
   const [hasta, setHasta] = useState(today)
@@ -154,6 +158,58 @@ export function ReportesPage() {
   const filasDiario = diario?.filas ?? []
   const maxJarrasDiario = Math.max(1, ...filasDiario.map((f) => f.jarras))
   const presetActivo = hasta === today ? PRESETS.find((p) => addDays(today, -(p.dias - 1)) === desde)?.dias : undefined
+  const agrupacion =
+    agrupar === 'modulo' ? 'Módulo' : agrupar === 'turno' ? 'Turno' : 'Fundo'
+
+  function exportarExcel() {
+    if (!rango && !diario && !viajes && !vehiculos) {
+      toast.warning('No hay reportes para exportar')
+      return
+    }
+    downloadExcel(stampFile(`reportes_${desde}_${hasta}`), [
+      {
+        name: 'Resumen',
+        headers: ['Indicador', 'Valor'],
+        rows: [
+          ['Desde', excelFecha(desde)],
+          ['Hasta', excelFecha(hasta)],
+          ['Días', dias],
+          ['Guías', totalGuias],
+          ['Jabas', totalJabas],
+          ['Jarras', totalJarras],
+          ['Viajes', totalViajes],
+          ['Viajes recepcionados', recepcionados],
+          ['Minutos promedio de ciclo', viajes?.minutos_promedio_ciclo ?? ''],
+        ],
+      },
+      {
+        name: `Detalle ${excelFecha(hasta)}`,
+        headers: ['Fundo', 'Módulo', 'Turno', 'Guías', 'Jabas', 'Jarras'],
+        rows: filasDiario.map((f) => [f.fundo, f.modulo, f.turno, f.guias, f.jabas, f.jarras]),
+      },
+      {
+        name: 'Tendencia diaria',
+        headers: ['Fecha', 'Guías', 'Jabas', 'Jarras'],
+        rows: (rango?.por_fecha ?? []).map((r) => [excelFecha(r.fecha), r.guias, r.jabas, r.jarras]),
+      },
+      {
+        name: `Por ${agrupacion.toLowerCase()}`,
+        headers: [agrupacion, 'Guías', 'Jabas', 'Jarras'],
+        rows: (rango?.por_grupo ?? []).map((g) => [g.label, g.guias, g.jabas, g.jarras]),
+      },
+      {
+        name: 'Viajes por estado',
+        headers: ['Estado', 'Cantidad'],
+        rows: (viajes?.por_estado ?? []).map((e) => [e.estado, e.count]),
+      },
+      {
+        name: 'Vehículos',
+        headers: ['Placa', 'Viajes', 'Recepcionados'],
+        rows: (vehiculos?.filas ?? []).map((v) => [v.placa, v.viajes, v.recepcionados]),
+      },
+    ])
+    toast.success('Reporte exportado a Excel')
+  }
 
   return (
     <div>
@@ -213,6 +269,7 @@ export function ReportesPage() {
           >
             Actualizar
           </Button>
+          <ExportExcelButton onExport={exportarExcel} disabled={loading && !rango} />
         </div>
       </div>
 

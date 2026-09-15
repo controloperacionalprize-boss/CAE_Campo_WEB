@@ -2,10 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Calendar, Clock, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { ExportExcelButton } from '../components/ui/ExportExcelButton'
 import { Breadcrumbs, EmptyState, ErrorBanner, EstadoDespacho, LoadingBlock } from '../components/ui/Feedback'
 import { Select } from '../components/ui/Form'
 import { Drawer } from '../components/ui/Overlay'
-import { listPage, isAbortError } from '../lib/api'
+import { useToast } from '../context/ToastContext'
+import { listAllPages, listPage, isAbortError } from '../lib/api'
+import { downloadExcel, stampFile } from '../lib/excel'
+import { GUIA_EXCEL_HEADERS, guiaExcelRow } from '../lib/excelRows'
 import { applyGuiaOnPage, pruneKnownGuias, sortGuiasByCodigoDesc } from '../lib/guiaLive'
 import { useOnGuiaLive, useOnLiveResync } from '../context/LiveEventsContext'
 import { cn, fmtNum } from '../lib/utils'
@@ -177,6 +181,7 @@ function StatBox({ label, value }: { label: string; value: string | number }) {
 }
 
 export function DespachoPage() {
+  const toast = useToast()
   const [items, setItems] = useState<GuiaIngreso[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -369,6 +374,22 @@ export function DespachoPage() {
     setPlanta('')
   }
 
+  async function exportarExcel() {
+    try {
+      const rows = await listAllPages<GuiaIngreso>('/api/v1/guias-ingreso', queryFilters())
+      if (!rows.length) {
+        toast.warning('No hay guías para exportar con los filtros actuales')
+        return
+      }
+      downloadExcel(stampFile('despacho'), [
+        { name: 'Despacho', headers: GUIA_EXCEL_HEADERS, rows: rows.map(guiaExcelRow) },
+      ])
+      toast.success(`Se exportaron ${rows.length} ${rows.length === 1 ? 'guía' : 'guías'}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo exportar a Excel')
+    }
+  }
+
   const grupos_dia = useMemo(() => {
     const out: Array<{ fecha: string; items: GuiaIngreso[]; jarras: number }> = []
     for (const g of items) {
@@ -397,6 +418,7 @@ export function DespachoPage() {
             {hasActiveFilters ? ' con los filtros actuales' : ' registradas'}
           </p>
         </div>
+        <ExportExcelButton onExport={exportarExcel} disabled={total === 0} />
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => void load()} />}

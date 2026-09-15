@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Calendar, Check, Clock } from 'lucide-react'
 import { Card, CardHeader } from '../components/ui/Card'
+import { ExportExcelButton } from '../components/ui/ExportExcelButton'
 import {
   Breadcrumbs,
   EmptyState,
@@ -10,7 +11,10 @@ import {
   LoadingBlock,
 } from '../components/ui/Feedback'
 import { Table, TableShell, THead, Th, Td, TdTruncate, Tr } from '../components/ui/Table'
-import { apiGet, isAbortError, listPage } from '../lib/api'
+import { useToast } from '../context/ToastContext'
+import { apiGet, isAbortError, listAllPages, listPage } from '../lib/api'
+import { downloadExcel, stampFile } from '../lib/excel'
+import { VIAJE_EXCEL_HEADERS, viajeExcelRow } from '../lib/excelRows'
 import { useOnLiveEvent, useOnLiveResync } from '../context/LiveEventsContext'
 import { cn } from '../lib/utils'
 import type { Croquis, Grr, Viaje, ViajeCompleto, ViajeDetalle } from '../types/api'
@@ -376,6 +380,7 @@ function GrrTab({ grr, viaje }: { grr: Grr | null; viaje: ViajeCompleto }) {
 }
 
 export function ViajesPage() {
+  const toast = useToast()
   const todayIso = toIsoDate()
   const [fecha, setFecha] = useState(fechaFromUrl)
   const [items, setItems] = useState<Viaje[]>([])
@@ -467,21 +472,40 @@ export function ViajesPage() {
     { id: 'grr', label: 'GRR' },
   ]
 
+  async function exportarExcel() {
+    try {
+      const rows = await listAllPages<Viaje>('/api/v1/viajes', { fecha })
+      if (!rows.length) {
+        toast.warning('No hay viajes para exportar en esta fecha')
+        return
+      }
+      downloadExcel(stampFile(`viajes_${fecha}`), [
+        { name: 'Viajes', headers: VIAJE_EXCEL_HEADERS, rows: rows.map(viajeExcelRow) },
+      ])
+      toast.success(`Se exportaron ${rows.length} ${rows.length === 1 ? 'viaje' : 'viajes'}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo exportar a Excel')
+    }
+  }
+
   return (
     <div>
       <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Viajes' }]} />
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="font-display text-2xl font-medium tracking-tight text-olive-950 sm:text-3xl">Viajes</h1>
-        <label className="flex items-center gap-2 rounded-lg border border-line bg-sand-0 px-3 py-2 text-sm">
-          <span className="text-xs text-muted">{fecha === todayIso ? 'Hoy' : 'Fecha'}</span>
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value || todayIso)}
-            className="bg-transparent text-sm text-olive-950 outline-none"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 rounded-lg border border-line bg-sand-0 px-3 py-2 text-sm">
+            <span className="text-xs text-muted">{fecha === todayIso ? 'Hoy' : 'Fecha'}</span>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value || todayIso)}
+              className="bg-transparent text-sm text-olive-950 outline-none"
+            />
+          </label>
+          <ExportExcelButton onExport={exportarExcel} disabled={items.length === 0} />
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => setReloadTick((n) => n + 1)} />}

@@ -183,4 +183,28 @@ export async function listAllItems<T>(
   return page.items
 }
 
+/** Recorre páginas (máx. 500 por llamada) hasta traer todos los registros del filtro. */
+export async function listAllPages<T>(
+  path: string,
+  opts: {
+    incluirInactivos?: boolean
+    signal?: AbortSignal
+    [key: string]: ParamValue | AbortSignal | undefined | Array<string | number>
+  } = {},
+): Promise<T[]> {
+  const pageSize = 500
+  const items: T[] = []
+  let skip = 0
+  let total = Infinity
+  while (items.length < total) {
+    const page = await listPage<T>(path, { ...opts, skip, limit: pageSize })
+    total = page.total
+    items.push(...page.items)
+    if (!page.items.length) break
+    skip += page.items.length
+    if (skip > 20_000) break
+  }
+  return items
+}
+
 export { API_BASE }

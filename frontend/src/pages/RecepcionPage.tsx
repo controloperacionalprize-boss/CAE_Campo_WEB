@@ -13,8 +13,12 @@ import {
 } from 'lucide-react'
 import { Card } from '../components/ui/Card'
 import { ProgressRing } from '../components/ui/Charts'
+import { ExportExcelButton } from '../components/ui/ExportExcelButton'
 import { Breadcrumbs, ErrorBanner, LoadingBlock } from '../components/ui/Feedback'
+import { useToast } from '../context/ToastContext'
 import { isAbortError, listPage } from '../lib/api'
+import { downloadExcel, excelFecha, stampFile } from '../lib/excel'
+import { GUIA_EXCEL_HEADERS, VIAJE_EXCEL_HEADERS, guiaExcelRow, viajeExcelRow } from '../lib/excelRows'
 import { useOnLiveEvent, useOnLiveResync } from '../context/LiveEventsContext'
 import { useDebounce } from '../hooks/useDebounce'
 import { cn, fmtNum } from '../lib/utils'
@@ -166,6 +170,7 @@ type Evento = {
 }
 
 export function RecepcionPage() {
+  const toast = useToast()
   const todayIso = toIsoDate()
   const [fecha, setFecha] = useState(todayIso)
   const [q, setQ] = useState('')
@@ -297,6 +302,38 @@ export function RecepcionPage() {
 
   const control = 'flex h-10 items-center rounded-lg border border-line bg-sand-0 text-sm text-olive-950'
 
+  function exportarExcel() {
+    const hayDatos =
+      filteredGrr.length + filteredGuias.length + hechosViajes.length + hechosGuias.length > 0
+    if (!hayDatos) {
+      toast.warning('No hay datos de recepción para exportar')
+      return
+    }
+    downloadExcel(stampFile(`recepcion_${fecha}`), [
+      {
+        name: 'GRR pendientes',
+        headers: VIAJE_EXCEL_HEADERS,
+        rows: filteredGrr.map(viajeExcelRow),
+      },
+      {
+        name: 'Guías en camino',
+        headers: GUIA_EXCEL_HEADERS,
+        rows: filteredGuias.map(guiaExcelRow),
+      },
+      {
+        name: 'GRR recepcionadas',
+        headers: VIAJE_EXCEL_HEADERS,
+        rows: hechosViajes.map(viajeExcelRow),
+      },
+      {
+        name: 'Guías en planta',
+        headers: GUIA_EXCEL_HEADERS,
+        rows: hechosGuias.map(guiaExcelRow),
+      },
+    ])
+    toast.success(`Recepción del ${excelFecha(fecha)} exportada`)
+  }
+
   return (
     <div>
       <Breadcrumbs items={[{ label: 'Inicio', to: '/' }, { label: 'Recepción' }]} />
@@ -341,6 +378,7 @@ export function RecepcionPage() {
               className="h-10 bg-transparent text-sm text-olive-950 outline-none"
             />
           </label>
+          <ExportExcelButton onExport={exportarExcel} disabled={loading} />
         </div>
       </div>
 
