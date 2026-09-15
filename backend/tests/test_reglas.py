@@ -75,6 +75,28 @@ def test_filtro_con_columna_no_permitida_se_ignora():
     assert "password_hash" not in sql and params == ["1"]
 
 
+# ---------- Logs
+
+
+def _registro_acceso(ruta: str):
+    import logging
+
+    # Formato del log de acceso de uvicorn: '%s - "%s %s HTTP/%s" %d'
+    return logging.LogRecord(
+        "uvicorn.access", logging.INFO, __file__, 0, '%s - "%s %s HTTP/%s" %d',
+        ("10.0.0.1:5000", "GET", ruta, "1.1", 200), None,
+    )
+
+
+def test_log_de_acceso_oculta_health_check():
+    from app.middleware import SinHealthCheckFilter
+
+    filtro = SinHealthCheckFilter()
+    assert filtro.filter(_registro_acceso("/api/health")) is False
+    assert filtro.filter(_registro_acceso("/api/health?x=1")) is False
+    assert filtro.filter(_registro_acceso("/api/v1/viajes/3/detalle")) is True
+
+
 # ---------- Configuración
 
 

@@ -27,8 +27,27 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+class SinHealthCheckFilter(logging.Filter):
+    """Oculta del log de acceso de uvicorn /api/health y /api/v1/eventos.
+
+    Render consulta el health check cada pocos segundos y cada pestaña reconecta
+    el stream de eventos cada 5 minutos: taparían las líneas útiles. El resto de
+    peticiones sigue registrándose.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3:
+            ruta = str(args[2]).split("?", 1)[0]
+            return ruta not in _SKIP_LOG
+        return "/api/health" not in record.getMessage()
+
+
 def configurar_logging(nivel: str) -> None:
     """Handler propio para el logger de la app: sin él, INFO no llega a la consola de Render."""
+    acceso = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, SinHealthCheckFilter) for f in acceso.filters):
+        acceso.addFilter(SinHealthCheckFilter())
     log = logging.getLogger("despacho")
     log.setLevel(nivel.upper())
     if not any(getattr(h, "_despacho", False) for h in log.handlers):
