@@ -586,22 +586,25 @@ def _assert_se_puede_anular(cur, guia: dict) -> None:
 
 
 def recepcionar_acopio(cur, item_id: int) -> dict:
-    guia = get_row(cur, "guia_ingreso", "id", item_id)
+    """Escaneo del QR en acopio. Repetible: si la guía ya estaba recepcionada responde
+    la guía tal cual (conserva la hora del primer escaneo) en lugar de 409, para que el
+    móvil pueda volver a escanear y seguir con el registro de llegada."""
+    guia = get_row_for_update(cur, "guia_ingreso", "id", item_id)
     if (guia.get("estado") or "").lower() == "anulado":
         raise HTTPException(status_code=400, detail="La guía está anulada")
+    if guia.get("recepcionado_acopio"):
+        return serialize_guia(guia)
     cur.execute(
         """
         UPDATE guia_ingreso
         SET recepcionado_acopio = TRUE, recepcionado_acopio_at = now(), updated_at = now()
-        WHERE id = %s AND recepcionado_acopio = FALSE AND estado <> 'anulado'
+        WHERE id = %s AND estado <> 'anulado'
         RETURNING *
         """,
         (item_id,),
     )
     row = cur.fetchone()
     if not row:
-        if guia.get("recepcionado_acopio"):
-            raise HTTPException(status_code=409, detail="Ya fue recepcionada en acopio")
         raise HTTPException(status_code=400, detail="No se pudo recepcionar la guía en acopio")
     return serialize_guia(dict(row))
 

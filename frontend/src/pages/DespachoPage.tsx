@@ -803,7 +803,7 @@ export function DespachoPage() {
                       </div>
                     </section>
                     <section>
-                      <SectionTitle>Llegada a planta</SectionTitle>
+                      <SectionTitle>Conteo de llegada</SectionTitle>
                       <LlegadaPlanta
                         enviadas={{ jarras: selected.jarras_totales, jabas: selected.jabas_totales }}
                         llegaron={{ jarras: selected.jarras_llegaron, jabas: selected.jabas_llegaron }}

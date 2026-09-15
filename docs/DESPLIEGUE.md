@@ -106,7 +106,8 @@ Orden del primer despliegue: base de datos → API en Render → web en Vercel �
 | Registrar guía | `POST /api/v1/guias-ingreso` | **`ha` obligatorio** (> 0, hectáreas trabajadas). Se descuenta del saldo diario del lote; si excede, `400` con el saldo disponible |
 | Reintento de envío | Mismo `POST` con el mismo `codigo` | Si ese usuario ya lo guardó, responde la guía existente (no duplica). `409` solo si el código es de otro usuario |
 | Saldo de ha antes de registrar | `GET /api/v1/lotes/{id}/saldo-ha?fecha=` o `GET /api/v1/guias-ingreso/contexto?lote_id=` (`ha_saldo`) | El saldo se reinicia a las 00:00 hora de Lima |
-| Registrar llegada | `PATCH /api/v1/guias-ingreso/{id}/registrar-llegada` `{ jarras_llegaron, jabas_llegaron }` | Rechaza guías anuladas |
+| Recepción en acopio (escaneo QR) | `PATCH /api/v1/guias-ingreso/{id}/recepcionar-acopio` | Repetible: si la guía ya estaba en acopio responde `200` con la guía (no `409`) y conserva la hora del primer escaneo. Rechaza anuladas |
+| Registrar llegada | `PATCH /api/v1/guias-ingreso/{id}/registrar-llegada` `{ jarras_llegaron, jabas_llegaron }` | Se puede volver a enviar para corregir el conteo. Rechaza guías anuladas |
 | Anular viaje | `DELETE /api/v1/viajes/{id}` | **No borra**: pasa a `anulado` (solo viajes en proceso) y libera sus guías para otro viaje |
 | Recepción en planta | `PATCH /api/v1/viajes/{id}/grr/recepcionar` | Marca también las guías del viaje como recepcionadas en planta |
 
