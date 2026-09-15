@@ -109,3 +109,8 @@ def test_health_publico_y_request_id(client):
     r = client.get("/api/health")
     assert r.status_code == 200 and r.json() == {"ok": True}
     assert len(r.headers.get("X-Request-ID", "")) >= 8
+
+
+def test_health_acepta_head_para_monitores(client):
+    # UptimeRobot usa HEAD por defecto: un 405 marcaría la API como caída.
+    assert client.head("/api/health").status_code == 200

@@ -137,7 +137,9 @@ async def unhandled_handler(_request: Request, exc: Exception):
     return json_error(500, "Error interno del servidor. Intente más tarde")
 
 
-@app.get("/api/health")
+# HEAD además de GET: monitores externos (UptimeRobot) chequean con HEAD por defecto
+# y un 405 los haría marcar la API como caída.
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
     return {"ok": True}
 
