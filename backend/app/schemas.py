@@ -434,6 +434,8 @@ class GuiaIngresoOut(ORMModel):
     recepcionado_acopio_at: datetime | None = None
     recepcionado_planta: bool = False
     recepcionado_planta_at: datetime | None = None
+    jarras_llegaron: int | None = None
+    jabas_llegaron: int | None = None
     created_at: datetime
     updated_at: datetime
 

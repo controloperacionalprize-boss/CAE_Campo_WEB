@@ -8,6 +8,7 @@ from ..db import get_conn
 from ..realtime import publish_viaje
 from ..viajes import (
     agregar_detalle,
+    anular_viaje,
     crear_croquis,
     crear_grr,
     crear_viaje,
@@ -76,6 +77,14 @@ def post_viaje(payload: S.ViajeIn):
     with get_conn() as conn:
         row = crear_viaje(conn.cursor(), payload)
         _emit_viaje(conn.cursor(), row["id"])
+    return row
+
+
+@router.delete("/viajes/{viaje_id}", response_model=S.ViajeOut)
+def delete_viaje(viaje_id: int):
+    with get_conn() as conn:
+        row = anular_viaje(conn.cursor(), viaje_id)
+    publish_viaje("viaje.deleted", row)
     return row
 
 

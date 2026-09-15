@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS guia_ingreso (
     recepcionado_acopio_at TIMESTAMPTZ,
     recepcionado_planta BOOLEAN NOT NULL DEFAULT FALSE,
     recepcionado_planta_at TIMESTAMPTZ,
+    jarras_llegaron INTEGER,
+    jabas_llegaron INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT guia_ingreso_estado_chk CHECK (estado IN ('registrado', 'anulado')),

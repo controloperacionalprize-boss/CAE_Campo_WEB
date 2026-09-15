@@ -409,6 +409,17 @@ def listar_detalle(cur, viaje_id: int) -> dict:
     }
 
 
+def anular_viaje(cur, viaje_id: int) -> dict:
+    viaje = get_viaje(cur, viaje_id)
+    require_en_proceso(viaje)
+    cur.execute("DELETE FROM viaje_detalle WHERE viaje_id = %s", (viaje_id,))
+    cur.execute("DELETE FROM viaje WHERE id = %s AND estado = 'en_proceso' RETURNING *", (viaje_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="No se pudo eliminar el viaje")
+    return serialize_viaje(dict(row))
+
+
 def quitar_detalle(cur, viaje_id: int, detalle_id: int) -> dict:
     viaje = get_viaje(cur, viaje_id)
     require_en_proceso(viaje)

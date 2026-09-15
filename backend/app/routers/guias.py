@@ -2,6 +2,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Query
+from pydantic import Field
 
 from .. import schemas as S
 from ..crud import get_row
@@ -13,6 +14,7 @@ from ..guia_ingreso import (
     parchear,
     recepcionar_acopio,
     recepcionar_planta,
+    registrar_llegada,
     resumen_dashboard,
     saldo_ha_lote,
     serialize_guia,
@@ -148,5 +150,22 @@ def patch_recepcionar_acopio(item_id: int):
 def patch_recepcionar_planta(item_id: int):
     with get_conn() as conn:
         row = recepcionar_planta(conn.cursor(), item_id)
+    publish_guia("guia.updated", row)
+    return row
+
+
+class RegistrarLlegadaBody(S.ORMModel):
+    jarras_llegaron: int = Field(ge=0)
+    jabas_llegaron: int = Field(ge=0)
+
+
+@router.patch("/guias-ingreso/{item_id}/registrar-llegada", response_model=S.GuiaIngresoOut)
+def patch_registrar_llegada(item_id: int, body: RegistrarLlegadaBody):
+    with get_conn() as conn:
+        row = registrar_llegada(
+            conn.cursor(), item_id,
+            jarras_llegaron=body.jarras_llegaron,
+            jabas_llegaron=body.jabas_llegaron,
+        )
     publish_guia("guia.updated", row)
     return row

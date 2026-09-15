@@ -585,6 +585,25 @@ def recepcionar_acopio(cur, item_id: int) -> dict:
     return serialize_guia(dict(row))
 
 
+def registrar_llegada(cur, item_id: int, *, jarras_llegaron: int, jabas_llegaron: int) -> dict:
+    guia = get_row(cur, "guia_ingreso", "id", item_id)
+    if not guia:
+        raise HTTPException(status_code=404, detail="Guía no encontrada")
+    cur.execute(
+        """
+        UPDATE guia_ingreso
+        SET jarras_llegaron = %s, jabas_llegaron = %s, updated_at = now()
+        WHERE id = %s
+        RETURNING *
+        """,
+        (jarras_llegaron, jabas_llegaron, item_id),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="No se pudo registrar la llegada")
+    return serialize_guia(dict(row))
+
+
 def recepcionar_planta(cur, item_id: int) -> dict:
     guia = get_row(cur, "guia_ingreso", "id", item_id)
     codigo = guia.get("codigo") or item_id
